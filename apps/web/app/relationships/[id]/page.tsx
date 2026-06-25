@@ -1,0 +1,1 @@
+export default function RelationshipDetailPage({ params }: { params: { id: string } }){ return <main className="main"><h1>Relationship Detail</h1><div className="card"><strong>{params.id}</strong><p className="muted">Role history, relevance, responsiveness, trust, last contact, and next follow-up placeholders.</p></div></main>; }

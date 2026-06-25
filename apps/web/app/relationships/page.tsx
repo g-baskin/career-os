@@ -1,0 +1,2 @@
+const roles = ["recruiter", "hiring_manager", "interviewer", "referral", "hr", "unknown"];
+export default function RelationshipsPage(){ return <main className="main"><h1>Relationships</h1><p className="muted">People are deduplicated by email, normalized name + company, and phone number.</p><div className="grid">{roles.map((role)=><div className="card" key={role}><strong>{role}</strong><p className="muted">Relationship score placeholders tracked.</p></div>)}</div></main>; }

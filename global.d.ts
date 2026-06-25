@@ -1,5 +1,5 @@
 declare module "*.css";
-declare module "react" { export type ReactNode = unknown; }
+declare module "react" { export type ReactNode = any; }
 declare module "react/jsx-runtime" { export const jsx: any; export const jsxs: any; export const Fragment: any; }
 declare namespace JSX { interface IntrinsicElements { [elemName: string]: any } }
 declare module "next" { export type Metadata = Record<string, unknown>; }

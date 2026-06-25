@@ -1,0 +1,2 @@
+const sections = ["ready_to_generate", "awaiting_review", "ready_to_apply", "followup_due", "closed"];
+export default function ApplicationPacketsPage(){ return <main className="main"><h1>Application Packets</h1><p className="muted">Packets connect jobs, companies, recruiters, fit summaries, placeholders, notes, status, and next action.</p><div className="grid">{sections.map((section)=><div className="card" key={section}><strong>{section}</strong><p className="muted">API-backed section placeholder.</p></div>)}</div></main>; }

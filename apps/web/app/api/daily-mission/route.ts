@@ -1,0 +1,2 @@
+import { listApplicationPackets } from "@career-os/domains";
+export async function GET() { const packets = listApplicationPackets(); return Response.json({ topRemoteCommercialJobs: [], hybridCommercialJobs: [], onsiteCommercialJobs: [], clearanceGovernmentSeparatedJobs: [], lowFitJobs: [], jobsReadyForPacketGeneration: [], packetsAwaitingReview: packets.filter((packet) => packet.status === "awaiting_review"), followupsDuePlaceholder: [], estimatedApplyTimePlaceholder: "TBD after application difficulty scoring" }); }

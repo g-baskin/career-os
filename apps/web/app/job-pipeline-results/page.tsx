@@ -1,0 +1,2 @@
+const steps = ["job imported", "job normalized", "remote classified", "clearance segmented", "certification classified", "fit scored", "application difficulty scored", "dashboard segment assigned", "event emitted", "state projection updated"];
+export default function JobPipelineResultsPage(){ return <main className="main"><h1>Job Pipeline Results</h1><div className="grid">{steps.map((step)=><div className="card" key={step}>{step}</div>)}</div></main>; }

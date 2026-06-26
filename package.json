@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "commit:guard": "npm run typecheck && npm test && npm run lint"
   },
   "dependencies": {
     "@prisma/client": "^5.16.0",

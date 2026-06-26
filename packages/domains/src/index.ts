@@ -8,4 +8,17 @@ export * from "./opportunity-intelligence/opportunity-playbooks";
 export * from "./relationship-intelligence/discovery-playbooks";
 export * from "./relationship-intelligence/services";
 export * from "./mission/campaign-playbooks";
+export { ResumeFactoryManager } from "./resume-factory/manager";
+export type { ResumeGenerationRequest, ResumeGenerationResult, ResumeGenerationPlaceholder } from "./resume-factory/manager";
+export {
+  buildTechnicalResumeDraft,
+  extractResumeKeywords,
+  normalizeVerifiedFacts,
+  assessResumeTruthfulness,
+  TruthfulnessGuardWorker,
+  type TechnicalResumeDraft,
+  type TechnicalResumeDraftInput,
+  type TruthfulnessGuardInput,
+  type TruthfulnessGuardResult
+} from "./resume-factory/workers";
 export { CommunicationsManager } from "./communications/manager";

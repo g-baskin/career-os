@@ -94,6 +94,57 @@ describe("Orchestrator", () => {
     expect(emittedTypes.includes("email.sent")).toBe(false);
   });
 
+  it("executes resume.generate through command bus without approval", async () => {
+    const { bus, approvals, stateStore, snapshotStore } = createTestPlatform();
+    const command = createCommand({
+      type: "resume.generate",
+      requestedBy: "api",
+      userId: "user-1",
+      entityType: "application_packet",
+      entityId: "packet-resume-1",
+      payload: {
+        jobId: "job-resume-1",
+        companyId: "company-resume-1",
+        applicationPacketId: "packet-resume-1",
+        targetRole: "Splunk Terraform Engineer",
+        verifiedFacts: ["Built Terraform modules for AWS observability workloads.", "Administered Splunk and Cribl pipelines for production telemetry."]
+      }
+    });
+
+    const result = await bus.execute(command);
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("completed");
+    expect(approvals.list().length).toBe(0);
+    expect(Boolean(stateStore.getProjection("application_packet", "packet-resume-1", "resume.current_draft"))).toBe(true);
+    expect(snapshotStore.listBySnapshotType("resume.source_input").length).toBe(1);
+  });
+
+  it("emits command lifecycle events for generated resume commands", async () => {
+    const { bus, eventStore } = createTestPlatform();
+    const command = createCommand({
+      type: "resume.generate",
+      requestedBy: "api",
+      userId: "user-1",
+      entityType: "application_packet",
+      entityId: "packet-resume-2",
+      payload: {
+        jobId: "job-resume-2",
+        companyId: "company-resume-2",
+        applicationPacketId: "packet-resume-2",
+        verifiedFacts: ["Led incident reviews with engineering teams."]
+      }
+    });
+
+    const result = await bus.execute(command);
+    const emittedTypes = eventStore.listByEntity("application_packet", "packet-resume-2").map((event) => event.eventType);
+
+    expect(result.ok).toBe(true);
+    expect(emittedTypes.includes("command.received")).toBe(true);
+    expect(emittedTypes.includes("command.accepted")).toBe(true);
+    expect(emittedTypes.includes("command.completed")).toBe(true);
+  });
+
   it("executes jobs.run_pipeline through command bus and updates stores without forbidden actions", async () => {
     const { bus, eventStore, stateStore, snapshotStore } = createTestPlatform();
     const command = createCommand({

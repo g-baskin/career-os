@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resumeGenerateRequestSchema } from "../route";
+import { POST, resumeGenerateRequestSchema } from "../route";
 
 describe("resume route schema", () => {
   it("accepts safe resume generation requests", () => {
@@ -24,5 +24,18 @@ describe("resume route schema", () => {
     });
 
     expect(parsed.success).toBe(false);
+  });
+
+  it("returns the expected failure envelope for invalid API payloads", async () => {
+    const response = await POST(new Request("http://localhost/api/resumes", {
+      method: "POST",
+      body: JSON.stringify({ jobId: "job-1", companyId: "company-1", applicationPacketId: "packet-1", verifiedFacts: [] })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("INVALID_RESUME_REQUEST");
+    expect(body.error.message).toBe("Invalid resume generation request.");
   });
 });

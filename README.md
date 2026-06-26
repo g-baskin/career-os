@@ -66,6 +66,23 @@ The platform is designed so future products such as Sales OS, Grant OS, Real Est
 - Local `email.send` replay is demo-only and records `externalActionTaken: false`.
 - Denied `application.auto_submit` commands remain non-replayable.
 
+## Phase 7 Resume Factory v1
+
+- Resume Factory v1 generates truthfulness-guarded resume drafts from supplied verified facts only.
+- `POST /api/resumes` routes through the Command Bus, Orchestrator, Resume Factory Domain, Event Store, State Store, and Snapshot Store.
+- `/resumes` provides a local demo workspace with a Splunk / Cribl Platform Engineer payload, markdown preview, truthfulness status, keyword alignment, and safety warnings.
+- CISSP, Security+, clearance, fake employers, and fake metrics remain unclaimed unless they are supplied as verified facts and pass the guard.
+
+## Resume Factory local demo
+
+```bash
+npm run dev
+```
+
+Then open `http://localhost:3000/resumes` and click `Generate Demo Splunk/Cribl Resume`.
+
+Confirm the preview appears, truthfulness status appears, CISSP/Security+/clearance are not invented, and no email/upload/submit/apply action happened.
+
 ## Safety rules
 
 Career OS requires human approval before sending emails, submitting applications, answering sensitive questions, contacting recruiters for the first time, modifying the master profile, exporting AI-generated documents for real use, or uploading files to unknown sites.
@@ -83,6 +100,8 @@ LinkedIn scraping, CAPTCHA bypassing, proxy scraping, email sending, browser aut
 - `docs/PHASE-04-ORCHESTRATOR-COMMAND-BUS.md`
 - `docs/PHASE-05-HUMAN-APPROVAL-GATES.md`
 - `docs/PHASE-06-APPROVED-COMMAND-REPLAY.md`
+- `docs/PHASE-07-RESUME-FACTORY-V1.md`
+- `docs/RESUME-FACTORY-DEMO.md`
 - `docs/ADR/0003-command-bus-orchestrator.md`
 - `docs/ADR/0004-human-approval-gates.md`
 - `docs/ADR/0005-approved-command-replay-idempotency.md`

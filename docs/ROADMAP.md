@@ -58,6 +58,13 @@ Career OS is the first flagship application on a reusable event-driven automatio
 - `/api/approvals/:id/replay` and `/approvals` replay controls.
 - Demo-only `email.send` replay records state without sending email.
 
+### Phase 7 — Resume Factory v1 demo UI
+
+- `POST /api/resumes` runs `resume.generate` through the existing command/orchestration boundary.
+- Resume Factory v1 emits deterministic, truthfulness-guarded markdown drafts from verified facts only.
+- `/resumes` adds a local Splunk / Cribl demo workspace with markdown preview, truthfulness status, keyword alignment, and safety warnings.
+- CISSP, Security+, clearance, fake employers, and fake metrics remain unclaimed unless verified and guard-approved.
+
 ## Next recommended foundation work
 
 Add durable replay queue workers and operator-visible replay audit history without enabling external actions.

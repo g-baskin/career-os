@@ -66,15 +66,35 @@ Development-safe permissions currently allowed by default include `read_jobs`, `
 - `POST /api/approvals/:id/reject`
 - `POST /api/approvals/:id/cancel`
 
+Local dev/demo routes exercise policy without real external actions:
+
+- `POST /api/dev/commands/allowed` submits safe demo `jobs.run_pipeline` data and should complete.
+- `POST /api/dev/commands/requires-approval` submits demo `email.send` data and should create a pending approval without sending email.
+- `POST /api/dev/commands/denied` submits demo `application.auto_submit` data and should reject without submitting anything.
+
 ## UI
 
-`/approvals` shows pending, approved, and rejected approval requests with command type, permission, risk, reason, entity, and requested date.
+`/approvals` shows pending, approved, rejected, and cancelled approval requests with command type, permission, risk, reason, entity, requested date, and pending-request approve/reject/cancel actions.
+
+The page also includes an Approval Test Panel with buttons for the allowed, requires-approval, and denied local demo commands.
+
+## Local demo flow
+
+1. Start the app with `npm run dev`.
+2. Open `/approvals`.
+3. Click **Run Allowed Test Command** and confirm no approval is created.
+4. Click **Run Requires Approval Test Command** and confirm a pending approval appears.
+5. Approve the pending approval.
+6. Run the requires-approval test again, then reject or cancel the new pending approval.
+7. Click **Run Denied Test Command** and confirm no pending approval is created for auto-submit.
 
 ## Trusted mode
 
 Trusted mode placeholders exist, but trusted mode is disabled.
 
 Auto-send and auto-submit remain disabled and are not implemented.
+
+Approved-command replay is covered separately in `docs/PHASE-06-APPROVED-COMMAND-REPLAY.md`.
 
 ## Non-goals
 

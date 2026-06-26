@@ -5,6 +5,7 @@ import {
   getDomain,
   domainRegistry,
   JobIntelligenceManager,
+  CommunicationsManager,
   normalizeJob,
   scoreFit,
   segmentJob
@@ -158,7 +159,15 @@ export class Orchestrator {
   }
 
   async execute(command: CareerCommand): Promise<CommandResult> {
-    await this.emitCommandEvent(command, "command.received", "accepted");
+    return this.executeWithPolicy(command, false);
+  }
+
+  async executeApprovedCommand(command: CareerCommand): Promise<CommandResult> {
+    return this.executeWithPolicy(command, true);
+  }
+
+  private async executeWithPolicy(command: CareerCommand, approvalReplay: boolean): Promise<CommandResult> {
+    await this.emitCommandEvent(command, approvalReplay ? "command.replay_received" : "command.received", "accepted", undefined, undefined, undefined, command.metadata?.approvalRequestId as string | undefined);
     const domain = this.resolveDomain(command);
     const decision = await (this.context.permissions ?? new PermissionPolicyService()).evaluate(command);
 
@@ -175,7 +184,7 @@ export class Orchestrator {
       return result;
     }
 
-    if (decision.status === "requires_approval") {
+    if (decision.status === "requires_approval" && !approvalReplay) {
       const approval = await (this.context.approvals ?? new InMemoryApprovalRequestService(this.context.eventStore)).createForCommand(command, decision);
       const result: CommandResult = {
         ok: false,
@@ -188,9 +197,15 @@ export class Orchestrator {
       return result;
     }
 
+    if (decision.status === "requires_approval" && approvalReplay) {
+      const result = this.rejected(command, "APPROVED_REPLAY_POLICY_MISMATCH", "Approved replay could not be verified by permission policy.");
+      await this.emitCommandEvent(command, "command.replay_failed", result.status, result.error, domain?.slug, decision, command.metadata?.approvalRequestId as string | undefined);
+      return result;
+    }
+
     if (!domain) {
       const result = this.rejected(command, "COMMAND_DOMAIN_NOT_REGISTERED", `No registered domain command found for ${command.type}`);
-      await this.emitCommandEvent(command, "command.rejected", result.status, result.error);
+      await this.emitCommandEvent(command, approvalReplay ? "command.replay_failed" : "command.rejected", result.status, result.error);
       return result;
     }
 
@@ -201,10 +216,10 @@ export class Orchestrator {
       return result;
     }
 
-    await this.emitCommandEvent(command, "command.accepted", "accepted", undefined, domain.slug, decision);
+    await this.emitCommandEvent(command, approvalReplay ? "command.replay_started" : "command.accepted", "accepted", undefined, domain.slug, decision, command.metadata?.approvalRequestId as string | undefined);
     try {
       const result = await manager.handle({ ...command, domain: domain.slug }, this.context);
-      await this.emitCommandEvent(command, result.ok ? "command.completed" : "command.failed", result.status, result.error, domain.slug);
+      await this.emitCommandEvent(command, approvalReplay ? (result.ok ? "command.replay_completed" : "command.replay_failed") : (result.ok ? "command.completed" : "command.failed"), result.status, result.error, domain.slug, decision, command.metadata?.approvalRequestId as string | undefined);
       return result;
     } catch (error) {
       const result: CommandResult = {
@@ -213,7 +228,7 @@ export class Orchestrator {
         commandId: command.id,
         error: { code: "COMMAND_EXECUTION_FAILED", message: error instanceof Error ? error.message : "Unknown command failure" }
       };
-      await this.emitCommandEvent(command, "command.failed", result.status, result.error, domain.slug);
+      await this.emitCommandEvent(command, approvalReplay ? "command.replay_failed" : "command.failed", result.status, result.error, domain.slug, decision, command.metadata?.approvalRequestId as string | undefined);
       return result;
     }
   }
@@ -270,6 +285,7 @@ export function createOrchestrator(context: OrchestratorContext) {
   orchestrator.registerManager(new ApplicationPacketCommandManager());
   orchestrator.registerManager(new RelationshipCommandManager());
   orchestrator.registerManager(new DailyMissionCommandManager());
+  orchestrator.registerManager(new CommunicationsManager());
   return orchestrator;
 }
 
@@ -278,6 +294,15 @@ export function createCommandBus(orchestrator: Orchestrator) {
   const commandTypes = new Set([...orchestrator.listCommandTypes(), ...getPolicyCommandTypes()]);
   for (const commandType of commandTypes) {
     bus.registerHandler(commandType, (command) => orchestrator.execute(command));
+  }
+  return bus;
+}
+
+export function createApprovedReplayCommandBus(orchestrator: Orchestrator) {
+  const bus = new CommandBus();
+  const commandTypes = new Set([...orchestrator.listCommandTypes(), ...getPolicyCommandTypes()]);
+  for (const commandType of commandTypes) {
+    bus.registerHandler(commandType, (command) => orchestrator.executeApprovedCommand(command));
   }
   return bus;
 }

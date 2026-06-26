@@ -205,20 +205,28 @@ model ApprovalRequest {
   status          String    @default("pending")
   riskLevel       String
   reason          String
-  requestPayload  Json?
-  decisionPayload Json?
-  requestedBy     String
-  requestedAt     DateTime  @default(now())
-  decidedAt       DateTime?
-  expiresAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  requestPayload     Json?
+  decisionPayload    Json?
+  replayStatus       String    @default("not_started")
+  replayedCommandId  String?
+  replayResult       Json?
+  replayError        Json?
+  replayAttemptCount Int       @default(0)
+  requestedBy        String
+  requestedAt        DateTime  @default(now())
+  decidedAt          DateTime?
+  expiresAt          DateTime?
+  replayedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([userId])
   @@index([commandId])
   @@index([commandType])
   @@index([permission])
   @@index([status])
+  @@index([replayStatus])
+  @@index([replayedCommandId])
   @@index([entityType, entityId])
   @@index([createdAt])
 }

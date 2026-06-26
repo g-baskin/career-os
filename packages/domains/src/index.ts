@@ -8,3 +8,4 @@ export * from "./opportunity-intelligence/opportunity-playbooks";
 export * from "./relationship-intelligence/discovery-playbooks";
 export * from "./relationship-intelligence/services";
 export * from "./mission/campaign-playbooks";
+export { CommunicationsManager } from "./communications/manager";

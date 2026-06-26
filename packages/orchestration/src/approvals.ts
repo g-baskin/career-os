@@ -1,6 +1,9 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { prisma as defaultPrisma } from "@career-os/db";
-import { prismaEventStore, type CareerEventInput, type EventStore } from "@career-os/events";
-import type { ApprovalRequestInput, ApprovalRequestRecord, ApprovalStatus, CareerCommand, PermissionDecision, RiskLevel } from "@career-os/shared";
+import { eventStore, prismaEventStore, type CareerEventInput, type EventStore } from "@career-os/events";
+import type { ApprovalReplayStatus, ApprovalRequestInput, ApprovalRequestRecord, ApprovalStatus, CareerCommand, CommandResult, PermissionDecision, RiskLevel } from "@career-os/shared";
 
 export interface ApprovalDecisionInput {
   decidedBy?: string;
@@ -16,6 +19,9 @@ export interface ApprovalRequestService {
   reject(id: string, input?: ApprovalDecisionInput): Promise<ApprovalRequestRecord | undefined> | ApprovalRequestRecord | undefined;
   cancel(id: string, input?: ApprovalDecisionInput): Promise<ApprovalRequestRecord | undefined> | ApprovalRequestRecord | undefined;
   expire(id: string, input?: ApprovalDecisionInput): Promise<ApprovalRequestRecord | undefined> | ApprovalRequestRecord | undefined;
+  startReplay(id: string, replayCommandId: string): Promise<ApprovalRequestRecord | undefined> | ApprovalRequestRecord | undefined;
+  completeReplay(id: string, result: CommandResult): Promise<ApprovalRequestRecord | undefined> | ApprovalRequestRecord | undefined;
+  failReplay(id: string, error: unknown): Promise<ApprovalRequestRecord | undefined> | ApprovalRequestRecord | undefined;
 }
 
 type PrismaLike = {
@@ -45,7 +51,9 @@ function normalizeApproval(input: ApprovalRequestInput, id = input.id ?? createA
     status: input.status ?? "pending",
     requestedAt: input.requestedAt ?? now,
     createdAt: input.createdAt ?? now,
-    updatedAt: input.updatedAt ?? now
+    updatedAt: input.updatedAt ?? now,
+    replayStatus: input.replayStatus ?? "not_started",
+    replayAttemptCount: input.replayAttemptCount ?? 0
   };
 }
 
@@ -61,7 +69,10 @@ function toApprovalRecord(row: unknown): ApprovalRequestRecord | undefined {
     createdAt: new Date(record.createdAt),
     updatedAt: new Date(record.updatedAt ?? record.createdAt),
     decidedAt: record.decidedAt ? new Date(record.decidedAt) : undefined,
-    expiresAt: record.expiresAt ? new Date(record.expiresAt) : undefined
+    expiresAt: record.expiresAt ? new Date(record.expiresAt) : undefined,
+    replayedAt: record.replayedAt ? new Date(record.replayedAt) : undefined,
+    replayStatus: (record.replayStatus ?? "not_started") as ApprovalReplayStatus,
+    replayAttemptCount: record.replayAttemptCount ?? 0
   };
 }
 
@@ -88,10 +99,19 @@ function approvalEvent(record: ApprovalRequestRecord, eventType: string): Career
       entityId: record.entityId,
       riskLevel: record.riskLevel,
       reason: record.reason,
-      userId: record.userId
+      userId: record.userId,
+      replayStatus: record.replayStatus,
+      replayedCommandId: record.replayedCommandId,
+      replayAttemptCount: record.replayAttemptCount,
+      replayedAt: record.replayedAt
     },
     confidence: 1
   };
+}
+
+function replayErrorPayload(error: unknown) {
+  if (error && typeof error === "object") return error;
+  return { message: error instanceof Error ? error.message : String(error) };
 }
 
 export class InMemoryApprovalRequestService implements ApprovalRequestService {
@@ -144,6 +164,33 @@ export class InMemoryApprovalRequestService implements ApprovalRequestService {
     return this.decide(id, "expired", input, "approval.expired");
   }
 
+  startReplay(id: string, replayCommandId: string) {
+    const existing = this.requests.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, replayStatus: "in_progress" as const, replayedCommandId: replayCommandId, replayAttemptCount: (existing.replayAttemptCount ?? 0) + 1, updatedAt: new Date() };
+    this.requests.set(id, updated);
+    this.eventStore?.append(approvalEvent(updated, "approval.replay_started"));
+    return updated;
+  }
+
+  completeReplay(id: string, result: CommandResult) {
+    const existing = this.requests.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, replayStatus: "completed" as const, replayResult: result, replayError: undefined, replayedAt: new Date(), updatedAt: new Date() };
+    this.requests.set(id, updated);
+    this.eventStore?.append(approvalEvent(updated, "approval.replay_completed"));
+    return updated;
+  }
+
+  failReplay(id: string, error: unknown) {
+    const existing = this.requests.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, replayStatus: "failed" as const, replayError: replayErrorPayload(error), updatedAt: new Date() };
+    this.requests.set(id, updated);
+    this.eventStore?.append(approvalEvent(updated, "approval.replay_failed"));
+    return updated;
+  }
+
   private decide(id: string, status: ApprovalStatus, input: ApprovalDecisionInput, eventType: string) {
     const existing = this.requests.get(id);
     if (!existing) return undefined;
@@ -153,6 +200,109 @@ export class InMemoryApprovalRequestService implements ApprovalRequestService {
     if (status === "approved") this.eventStore?.append(approvalEvent(updated, "command.approval_granted"));
     if (status === "rejected") this.eventStore?.append(approvalEvent(updated, "command.approval_denied"));
     return updated;
+  }
+}
+
+export class FileApprovalRequestService implements ApprovalRequestService {
+  constructor(private readonly filePath = join(tmpdir(), "career-os-approval-requests.json"), private readonly eventStore?: EventStore) {}
+
+  createForCommand(command: CareerCommand, decision: PermissionDecision) {
+    const requests = this.readRequests();
+    const existing = requests.find((request) => request.commandId === command.id && request.status === "pending");
+    if (existing) return existing;
+
+    const request = normalizeApproval({
+      userId: command.userId,
+      commandId: command.id,
+      commandType: command.type,
+      permission: decision.permission,
+      entityType: command.entityType,
+      entityId: command.entityId,
+      riskLevel: decision.riskLevel,
+      reason: decision.reason,
+      requestPayload: command.payload,
+      requestedBy: command.requestedBy
+    });
+    this.writeRequests([request, ...requests]);
+    this.eventStore?.append(approvalEvent(request, "approval.requested"));
+    return request;
+  }
+
+  list() {
+    return this.readRequests().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  getById(id: string) {
+    return this.readRequests().find((request) => request.id === id);
+  }
+
+  approve(id: string, input: ApprovalDecisionInput = {}) {
+    return this.decide(id, "approved", input, "approval.approved");
+  }
+
+  reject(id: string, input: ApprovalDecisionInput = {}) {
+    return this.decide(id, "rejected", input, "approval.rejected");
+  }
+
+  cancel(id: string, input: ApprovalDecisionInput = {}) {
+    return this.decide(id, "cancelled", input, "approval.cancelled");
+  }
+
+  expire(id: string, input: ApprovalDecisionInput = {}) {
+    return this.decide(id, "expired", input, "approval.expired");
+  }
+
+  startReplay(id: string, replayCommandId: string) {
+    return this.updateReplay(id, (existing) => ({ ...existing, replayStatus: "in_progress", replayedCommandId: replayCommandId, replayAttemptCount: (existing.replayAttemptCount ?? 0) + 1, updatedAt: new Date() }), "approval.replay_started");
+  }
+
+  completeReplay(id: string, result: CommandResult) {
+    return this.updateReplay(id, (existing) => ({ ...existing, replayStatus: "completed", replayResult: result, replayError: undefined, replayedAt: new Date(), updatedAt: new Date() }), "approval.replay_completed");
+  }
+
+  failReplay(id: string, error: unknown) {
+    return this.updateReplay(id, (existing) => ({ ...existing, replayStatus: "failed", replayError: replayErrorPayload(error), updatedAt: new Date() }), "approval.replay_failed");
+  }
+
+  clear() {
+    this.writeRequests([]);
+  }
+
+  private updateReplay(id: string, updater: (existing: ApprovalRequestRecord) => ApprovalRequestRecord, eventType: string) {
+    const requests = this.readRequests();
+    const existing = requests.find((request) => request.id === id);
+    if (!existing) return undefined;
+    const updated = updater(existing);
+    this.writeRequests(requests.map((request) => (request.id === id ? updated : request)));
+    this.eventStore?.append(approvalEvent(updated, eventType));
+    return updated;
+  }
+
+  private decide(id: string, status: ApprovalStatus, input: ApprovalDecisionInput, eventType: string) {
+    const requests = this.readRequests();
+    const existing = requests.find((request) => request.id === id);
+    if (!existing) return undefined;
+    const updated = { ...existing, status, decisionPayload: input.decisionPayload ?? { decidedBy: input.decidedBy, reason: input.reason }, decidedAt: new Date(), updatedAt: new Date() };
+    this.writeRequests(requests.map((request) => (request.id === id ? updated : request)));
+    this.eventStore?.append(approvalEvent(updated, eventType));
+    if (status === "approved") this.eventStore?.append(approvalEvent(updated, "command.approval_granted"));
+    if (status === "rejected") this.eventStore?.append(approvalEvent(updated, "command.approval_denied"));
+    return updated;
+  }
+
+  private readRequests() {
+    if (!existsSync(this.filePath)) return [];
+    try {
+      const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      return toApprovalRecords(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  private writeRequests(requests: ApprovalRequestRecord[]) {
+    writeFileSync(this.filePath, JSON.stringify(requests, null, 2));
   }
 }
 
@@ -208,6 +358,57 @@ export class PrismaApprovalRequestService implements ApprovalRequestService {
     return this.decide(id, "expired", input, "approval.expired");
   }
 
+  startReplay(id: string, replayCommandId: string) {
+    return this.updateReplay(
+      id,
+      {
+        replayStatus: "in_progress",
+        replayedCommandId: replayCommandId,
+        replayAttemptCount: { increment: 1 },
+        updatedAt: new Date()
+      },
+      "approval.replay_started"
+    );
+  }
+
+  completeReplay(id: string, result: CommandResult) {
+    return this.updateReplay(
+      id,
+      {
+        replayStatus: "completed",
+        replayResult: result,
+        replayError: undefined,
+        replayedAt: new Date(),
+        updatedAt: new Date()
+      },
+      "approval.replay_completed"
+    );
+  }
+
+  failReplay(id: string, error: unknown) {
+    return this.updateReplay(
+      id,
+      {
+        replayStatus: "failed",
+        replayError: replayErrorPayload(error),
+        updatedAt: new Date()
+      },
+      "approval.replay_failed"
+    );
+  }
+
+  private async updateReplay(id: string, data: Record<string, unknown>, eventType: string) {
+    try {
+      const row = await this.client.approvalRequest.update({ where: { id }, data });
+      const record = toApprovalRecord(row);
+      if (!record) return undefined;
+      await this.eventStore?.append(approvalEvent(record, eventType));
+      return record;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async decide(id: string, status: ApprovalStatus, input: ApprovalDecisionInput, eventType: string) {
     try {
       const row = await this.client.approvalRequest.update({
@@ -232,4 +433,5 @@ export class PrismaApprovalRequestService implements ApprovalRequestService {
 }
 
 export const approvalRequestService = new InMemoryApprovalRequestService();
+export const localApprovalRequestService = new FileApprovalRequestService(undefined, eventStore);
 export const prismaApprovalRequestService = new PrismaApprovalRequestService(prismaEventStore);

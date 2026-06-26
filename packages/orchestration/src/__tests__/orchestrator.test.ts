@@ -4,7 +4,7 @@ import { InMemoryStateStore } from "@career-os/state";
 import { describe, expect, it } from "vitest";
 import { createCommand } from "../command-bus";
 import { InMemoryApprovalRequestService } from "../approvals";
-import { createCommandBus, createOrchestrator } from "../orchestrator";
+import { createApprovedReplayCommandBus, createCommandBus, createOrchestrator } from "../orchestrator";
 import { PermissionPolicyService } from "../permissions";
 
 function createTestPlatform() {
@@ -62,6 +62,36 @@ describe("Orchestrator", () => {
     expect(result.status).toBe("rejected");
     expect(result.error?.code).toBe("COMMAND_DENIED");
     expect(approvals.list().length).toBe(0);
+  });
+
+  it("executes approved email replay through the approved replay command bus in demo mode", async () => {
+    const { eventStore, orchestrator, stateStore } = createTestPlatform();
+    const bus = createApprovedReplayCommandBus(orchestrator);
+    const command = createCommand({
+      id: "replay-command-1",
+      type: "email.send",
+      requestedBy: "system",
+      userId: "user-1",
+      entityType: "email",
+      entityId: "email-replay-1",
+      payload: { to: "demo@example.invalid", subject: "Demo only" },
+      metadata: {
+        approvalReplay: true,
+        approvalStatus: "approved",
+        approvalPermission: "send_email",
+        approvalRequestId: "approval-1"
+      }
+    });
+
+    const result = await bus.execute(command);
+    const emittedTypes = eventStore.listByEntity("email", "email-replay-1").map((event) => event.eventType);
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("completed");
+    expect(emittedTypes.includes("command.replay_started")).toBe(true);
+    expect(emittedTypes.includes("command.replay_completed")).toBe(true);
+    expect(Boolean(stateStore.getProjection("email", "email-replay-1", "email.demo_replay"))).toBe(true);
+    expect(emittedTypes.includes("email.sent")).toBe(false);
   });
 
   it("executes jobs.run_pipeline through command bus and updates stores without forbidden actions", async () => {

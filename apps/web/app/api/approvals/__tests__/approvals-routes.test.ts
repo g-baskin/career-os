@@ -1,7 +1,9 @@
 import { InMemoryEventStore } from "@career-os/events";
-import { InMemoryApprovalRequestService, PermissionPolicyService, createCommand } from "@career-os/orchestration";
+import { InMemorySnapshotStore } from "@career-os/snapshots";
+import { InMemoryStateStore } from "@career-os/state";
+import { InMemoryApprovalRequestService, PermissionPolicyService, createApprovedReplayCommandBus, createCommand, createOrchestrator } from "@career-os/orchestration";
 import { describe, expect, it } from "vitest";
-import { approveApproval, getApproval, listApprovals, rejectApproval } from "../_handlers";
+import { approveApproval, cancelApproval, getApproval, listApprovals, rejectApproval, replayApproval } from "../_handlers";
 
 function createApprovalService() {
   const eventStore = new InMemoryEventStore();
@@ -61,5 +63,31 @@ describe("approval API handlers", () => {
 
     expect(body.ok).toBe(true);
     expect(body.data.approval.status).toBe("rejected");
+  });
+
+  it("replays approved approval requests", async () => {
+    const eventStore = new InMemoryEventStore();
+    const service = new InMemoryApprovalRequestService(eventStore);
+    const orchestrator = createOrchestrator({ eventStore, stateStore: new InMemoryStateStore(), snapshotStore: new InMemorySnapshotStore(), permissions: new PermissionPolicyService(), approvals: service });
+    const command = createCommand({ type: "email.send", requestedBy: "api", userId: "user-1", entityType: "email", entityId: "email-1", payload: { to: "demo@example.invalid" } });
+    const approval = service.createForCommand(command, new PermissionPolicyService().evaluate(command));
+    service.approve(approval.id, { decidedBy: "user-1" });
+
+    const response = await replayApproval(service, createApprovedReplayCommandBus(orchestrator), approval.id);
+    const body = await response.json();
+
+    expect(body.ok).toBe(true);
+    expect(body.data.command.status).toBe("completed");
+    expect(body.data.approval.replayStatus).toBe("completed");
+  });
+
+  it("cancels approval requests", async () => {
+    const { service, approval } = createApprovalService();
+
+    const response = await cancelApproval(service, approval.id, new Request("http://localhost/api/approvals/cancel", { method: "POST", body: JSON.stringify({ reason: "Cancel" }) }));
+    const body = await response.json();
+
+    expect(body.ok).toBe(true);
+    expect(body.data.approval.status).toBe("cancelled");
   });
 });

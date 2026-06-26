@@ -1,6 +1,6 @@
-import { prismaApprovalRequestService } from "@career-os/orchestration";
+import { localApprovalRequestService } from "@career-os/orchestration";
 import { rejectApproval } from "../../_handlers";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  return rejectApproval(prismaApprovalRequestService, params.id, request);
+  return rejectApproval(localApprovalRequestService, params.id, request);
 }

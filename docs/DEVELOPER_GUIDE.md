@@ -145,6 +145,31 @@ Snapshot types should describe the captured source, for example `job.description
 
 Approval decisions emit `approval.requested`, `approval.approved`, `approval.rejected`, `approval.cancelled`, `approval.expired`, `command.approval_granted`, and `command.approval_denied`.
 
+Approved replay emits `approval.replay_started`, `approval.replay_completed`, `approval.replay_failed`, `command.replay_received`, `command.replay_started`, `command.replay_completed`, and `command.replay_failed`.
+
+## Replay an approved command
+
+1. Rebuild the command from the existing `ApprovalRequest`.
+2. Add approval replay metadata: approval request id, original command id, approved status, and permission.
+3. Submit through an approved replay Command Bus handler.
+4. Let the Orchestrator and Permission Policy verify the approval metadata.
+5. Persist replay status on the approval request.
+6. Treat `completed` replay as idempotent and return the stored result.
+
+Do not execute directly from API routes or approval UI components.
+
+## Test approval behavior locally
+
+1. Start the app with `npm run dev`.
+2. Open `/approvals`.
+3. Use **Run Allowed Test Command** to submit safe demo `jobs.run_pipeline` data.
+4. Use **Run Requires Approval Test Command** to submit demo `email.send` data that creates a pending approval without sending email.
+5. Approve, reject, or cancel the pending approval from the page.
+6. Replay an approved demo `email.send` request and confirm it completes with `externalActionTaken: false`.
+7. Use **Run Denied Test Command** to submit demo `application.auto_submit` data that policy rejects before execution.
+
+The matching route handlers live under `/api/dev/commands/*` and must stay side-effect free.
+
 ## Add an API route
 
 API routes should validate input, build a command, submit it to the Command Bus, and return consistent JSON.

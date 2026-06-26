@@ -5,6 +5,7 @@ export type CommandRequester = "user" | "system" | "worker" | "api" | "scheduler
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type PermissionDecisionStatus = "allowed" | "denied" | "requires_approval";
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "cancelled";
+export type ApprovalReplayStatus = "not_started" | "in_progress" | "completed" | "failed";
 
 export type PermissionName =
   | "read_jobs"
@@ -125,10 +126,16 @@ export interface ApprovalRequestInput {
   reason: string;
   requestPayload?: unknown;
   decisionPayload?: unknown;
+  replayStatus?: ApprovalReplayStatus;
+  replayedCommandId?: string;
+  replayResult?: unknown;
+  replayError?: unknown;
+  replayAttemptCount?: number;
   requestedBy: CommandRequester;
   requestedAt?: Date;
   decidedAt?: Date;
   expiresAt?: Date;
+  replayedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }

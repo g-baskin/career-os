@@ -122,6 +122,16 @@ export class PermissionPolicyService implements PermissionService {
       };
     }
 
+    if (command.metadata?.approvalReplay === true && command.metadata.approvalStatus === "approved" && command.metadata.approvalPermission === permission) {
+      return {
+        status: "allowed",
+        permission,
+        reason: "Approved replay verified for this permission.",
+        riskLevel,
+        requiresApproval: false
+      };
+    }
+
     if (permission === "send_email" && this.config.auto_send_enabled === true && this.config.require_approval_before_send !== true) {
       return { status: "allowed", permission, reason: "Email sending explicitly allowed by policy.", riskLevel, requiresApproval: false };
     }

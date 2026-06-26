@@ -29,3 +29,7 @@ Sensitive permissions require approval by default:
 - `write_calendar`
 
 Trusted mode placeholders exist but remain disabled: auto-send and auto-submit are not implemented.
+
+Dev/demo approval routes may exercise allowed, approval-required, denied, and approved-replay command paths locally. They must remain side-effect free: no email sending, browser automation, file upload, or application submission.
+
+Approved replay requires an `approved` approval request and matching approval permission metadata. Completed replay is idempotent and returns the stored replay result. Demo `email.send` replay records `externalActionTaken: false`; denied `application.auto_submit` commands are not replayable.

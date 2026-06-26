@@ -54,7 +54,17 @@ The platform is designed so future products such as Sales OS, Grant OS, Real Est
 - Sensitive commands create approval requests instead of executing automatically.
 - Approval lifecycle events preserve audit history.
 - Approval API routes and a basic `/approvals` page expose pending and decided requests.
+- `/approvals` includes local demo buttons for allowed, approval-required, and denied commands.
+- Dev demo routes under `/api/dev/commands/*` exercise policy without sending email, using a browser, uploading files, or submitting applications.
 - Trusted mode placeholders remain disabled.
+
+## Phase 6 approved command replay
+
+- Approved requests can be replayed through Approval Service → Command Bus → Orchestrator → Permission Policy → Domain Manager.
+- Replay status and results are persisted on the approval request.
+- Completed replay is idempotent and returns the stored result on repeat clicks.
+- Local `email.send` replay is demo-only and records `externalActionTaken: false`.
+- Denied `application.auto_submit` commands remain non-replayable.
 
 ## Safety rules
 
@@ -72,8 +82,10 @@ LinkedIn scraping, CAPTCHA bypassing, proxy scraping, email sending, browser aut
 - `docs/PHASE-03-DURABLE-STORES.md`
 - `docs/PHASE-04-ORCHESTRATOR-COMMAND-BUS.md`
 - `docs/PHASE-05-HUMAN-APPROVAL-GATES.md`
+- `docs/PHASE-06-APPROVED-COMMAND-REPLAY.md`
 - `docs/ADR/0003-command-bus-orchestrator.md`
 - `docs/ADR/0004-human-approval-gates.md`
+- `docs/ADR/0005-approved-command-replay-idempotency.md`
 
 ## Commands
 

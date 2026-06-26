@@ -45,12 +45,22 @@ Career OS is the first flagship application on a reusable event-driven automatio
 - Approval Request service with in-memory and Prisma-backed adapters.
 - Orchestrator approval checks before command execution.
 - Approval lifecycle events and approval API routes.
-- Basic Approval Requests UI page.
+- Approval Requests UI page with approve/reject/cancel actions and local demo buttons.
+- Dev demo routes for allowed, approval-required, and denied commands.
 - Trusted mode placeholders remain disabled.
+
+### Phase 6 — Approved command replay
+
+- Approval Replay service rebuilds approved commands from ApprovalRequest records.
+- Approved replay routes through Command Bus, Orchestrator, Permission Policy, Domain Manager, Event Store, and State Store.
+- Replay lifecycle events and persisted replay status/result fields.
+- Idempotency guards prevent completed replays from executing twice.
+- `/api/approvals/:id/replay` and `/approvals` replay controls.
+- Demo-only `email.send` replay records state without sending email.
 
 ## Next recommended foundation work
 
-Implement resumable approved-command execution and connect approval decisions to queued command replay.
+Add durable replay queue workers and operator-visible replay audit history without enabling external actions.
 
 ## Explicitly deferred
 

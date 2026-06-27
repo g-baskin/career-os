@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLOCKED_DEMO_KEYWORDS, SAFETY_WARNINGS, buildKeywordAlignment, buildResumeDemoPayload, resumeResultFromEnvelope } from "./resume-demo-panel-model";
+import { BLOCKED_DEMO_KEYWORDS, SAFETY_WARNINGS, buildKeywordAlignment, buildResumeDemoPayload, resumeResultFromEnvelope, uniqueStrings } from "./resume-demo-panel-model";
 
 describe("resume demo panel model", () => {
   it("builds the default Splunk/Cribl demo payload without unsupported claims", () => {
@@ -23,6 +23,11 @@ describe("resume demo panel model", () => {
     expect(["Splunk", "Cribl", "SIEM", "Linux", "Terraform", "AWS", "Azure", "GCP"].every((keyword) => alignment.verifiedMatches.includes(keyword))).toBe(true);
     expect(["CISSP", "Security+"].every((keyword) => alignment.missingKeywords.includes(keyword))).toBe(true);
     expect(["active clearance", "Top Secret", "TS/SCI"].every((keyword) => alignment.blockedKeywords.includes(keyword))).toBe(true);
+  });
+
+  it("deduplicates display strings before rendering repeated warnings or claims", () => {
+    expect(uniqueStrings(["Human review required", "Human review required", "  Grounded claim  "]).join("|"))
+      .toBe("Human review required|Grounded claim");
   });
 
   it("preserves safety warnings required by the demo page", () => {

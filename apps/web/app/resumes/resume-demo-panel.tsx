@@ -9,6 +9,7 @@ import {
   buildKeywordAlignment,
   buildResumeDemoPayload,
   resumeResultFromEnvelope,
+  uniqueStrings,
   type KeywordAlignmentView,
   type ResumeDemoFields,
   type ResumeDemoPayload,
@@ -92,7 +93,7 @@ function KeywordAlignment({ alignment }: { alignment: KeywordAlignmentView }) {
       <ListCard title="Verified matches" items={alignment.verifiedMatches} emptyText="No verified keyword matches yet." />
       <ListCard title="Partial matches" items={alignment.partialMatches} emptyText="No partial matches in this demo response." />
       <ListCard title="Missing keywords" items={alignment.missingKeywords} emptyText="No missing keywords found." />
-      <ListCard title="Blocked keywords" items={alignment.blockedKeywords} emptyText="No blocked keywords found." />
+      <ListCard title="Blocked from being claimed" items={alignment.blockedKeywords} emptyText="No blocked terms found." />
     </div>
   );
 }
@@ -106,24 +107,63 @@ function TruthfulnessGuard({ result }: { result?: ResumeResultView }) {
         <p className="muted">{guard ? (guard.ok ? "Passed: every draft bullet matched a verified fact." : "Blocked: unsupported claims detected.") : "Awaiting generation."}</p>
       </div>
       <ListCard title="Blocked claims" items={guard?.blockedClaims ?? []} emptyText="No blocked claims reported." />
-      <ListCard title="Warnings" items={[...(result?.warnings ?? []), ...(guard?.warnings ?? [])]} emptyText="No warnings returned yet." />
-      <ListCard title="Grounded claims" items={guard?.groundedClaims ?? []} emptyText="No grounded claims returned yet." />
+      <ListCard title="Warnings" items={uniqueStrings([...(result?.warnings ?? []), ...(guard?.warnings ?? [])])} emptyText="No warnings returned yet." />
+      <ListCard title="Grounded claims" items={uniqueStrings(guard?.groundedClaims ?? [])} emptyText="No grounded claims returned yet." />
     </div>
   );
 }
 
-function MarkdownPreview({ content }: { content?: string }) {
-  if (!content) return <div className="card"><p className="muted">Resume markdown preview will appear here after generation.</p></div>;
+function ResumePreview({ result, latestPayload, alignment }: { result?: ResumeResultView; latestPayload?: ResumeDemoPayload; alignment: KeywordAlignmentView }) {
+  if (!result?.draft) return <div className="card"><p className="muted">Resume preview will appear here after generation.</p></div>;
 
-  const blocks = content.split("\n");
+  const verifiedFacts = uniqueStrings(result.draft.sourceFacts);
+  const verifiedSkills = uniqueStrings(alignment.verifiedMatches);
+  const technicalSkillNames = new Set(["splunk", "cribl", "siem", "linux", "terraform", "aws", "azure", "gcp"]);
+  const technicalSkills = verifiedSkills.filter((skill) => technicalSkillNames.has(skill.toLowerCase()));
+  const reviewNotes = uniqueStrings([...(result.warnings ?? []), ...(result.guard?.warnings ?? [])]);
+
   return (
-    <div className="markdown-preview">
-      {blocks.map((line, index) => {
-        if (line.startsWith("## ")) return <h3 key={`${line}-${index}`}>{line.replace(/^##\s+/, "")}</h3>;
-        if (line.startsWith("- ")) return <p className="preview-bullet" key={`${line}-${index}`}>• {line.replace(/^[-]\s+/, "")}</p>;
-        if (!line.trim()) return <div className="preview-spacer" key={`space-${index}`} />;
-        return <p key={`${line}-${index}`}>{line}</p>;
-      })}
+    <div className="resume-preview">
+      <header className="resume-header">
+        <p className="resume-kicker">Target Title</p>
+        <h3>{latestPayload?.targetRole ?? "Resume draft"}</h3>
+        <p className="muted">Review-required draft assembled only from supplied verified facts.</p>
+      </header>
+
+      <section>
+        <h4>Professional Summary</h4>
+        <p>This local-review draft targets {latestPayload?.targetRole ?? "the selected role"} and only restates the verified facts listed in Experience Highlights.</p>
+      </section>
+
+      <section>
+        <h4>Core Skills</h4>
+        <p>{verifiedSkills.length > 0 ? verifiedSkills.join(" · ") : "No verified skills matched yet."}</p>
+      </section>
+
+      <section>
+        <h4>Technical Skills</h4>
+        <p>{technicalSkills.length > 0 ? technicalSkills.join(" · ") : "No verified technical skills matched yet."}</p>
+      </section>
+
+      <section>
+        <h4>Experience Highlights</h4>
+        <ul>
+          {verifiedFacts.map((fact) => <li key={fact}>{fact}</li>)}
+        </ul>
+      </section>
+
+      <section>
+        <h4>Certifications</h4>
+        <p>No verified certifications supplied. CISSP and Security+ are missing/preferred keywords, not claimed.</p>
+      </section>
+
+      <section>
+        <h4>Review Notes</h4>
+        <ul>
+          {reviewNotes.map((note) => <li key={note}>{note}</li>)}
+          <li>Clearance and fake employer, date, metric, and certification claims are blocked from being claimed.</li>
+        </ul>
+      </section>
     </div>
   );
 }
@@ -219,7 +259,7 @@ export default function ResumeDemoPanel() {
 
       <section className="section">
         <h2>Resume Preview</h2>
-        <MarkdownPreview content={result?.draft?.content} />
+        <ResumePreview result={result} latestPayload={latestPayload} alignment={alignment} />
       </section>
     </>
   );

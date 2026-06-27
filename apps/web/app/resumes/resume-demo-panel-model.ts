@@ -42,7 +42,7 @@ export interface ResumeDemoFields {
 }
 
 export interface ResumeDemoPayload extends ResumeDemoFields {
-  userId: string;
+  userId?: string;
   jobId: string;
   companyId: string;
   applicationPacketId: string;
@@ -96,6 +96,10 @@ export interface KeywordAlignmentView {
   partialMatches: string[];
   missingKeywords: string[];
   blockedKeywords: string[];
+}
+
+export function uniqueStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -190,7 +194,6 @@ function normalizeGuard(value: unknown): TruthfulnessGuardView | undefined {
 
 export function buildResumeDemoPayload(fields: Partial<ResumeDemoFields> = {}): ResumeDemoPayload {
   return {
-    userId: "local-demo-user",
     jobId: "job-demo-splunk-cribl",
     companyId: "company-demo-commercial",
     applicationPacketId: "packet-demo-splunk-cribl",
@@ -242,7 +245,7 @@ export function buildKeywordAlignment(payload: Pick<ResumeDemoPayload, "targetKe
   const facts = result?.draft?.sourceFacts.length ? result.draft.sourceFacts : payload.verifiedFacts;
   const blockedClaims = result?.guard?.blockedClaims ?? [];
   const blockedClaimKeywords = blockedClaims.map((claim) => `Blocked claim: ${claim}`);
-  const blockedKeywords = [...new Set([...BLOCKED_DEMO_KEYWORDS, ...blockedClaimKeywords])];
+  const blockedKeywords = uniqueStrings([...BLOCKED_DEMO_KEYWORDS, ...blockedClaimKeywords]);
   const blockedKeywordSet = new Set(blockedKeywords.map(normalizeKeyword));
   const verifiedMatches: string[] = [];
   const partialMatches: string[] = [];

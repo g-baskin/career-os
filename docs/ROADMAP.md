@@ -66,9 +66,17 @@ Career OS is the first flagship application on a reusable event-driven automatio
 - `/resumes` adds a local Splunk / Cribl demo workspace with markdown preview, truthfulness status, keyword alignment, and safety warnings.
 - CISSP, Security+, clearance, fake employers, and fake metrics remain unclaimed unless verified in Profile Facts and guard-approved.
 
+### Phase 8 — Master Resume Import v1
+
+- `/master-resume` imports pasted plain-text resume content.
+- `master_resume.import` stores the current import, captures `master_resume.source_text`, and emits parser events.
+- Candidate facts are created as `needs_review`, `sourceType: resume_import`, and `allowedInResume: false`.
+- `profile_facts.review_queue` surfaces facts awaiting verification or blocking.
+- Resume Factory ignores needs-review import facts and continues to use verified Profile Facts only.
+
 ## Next recommended foundation work
 
-Add durable replay queue workers and operator-visible replay audit history without enabling external actions.
+Build Resume Factory v2 templates and review checklists from the verified Profile Facts source of truth.
 
 ## Explicitly deferred
 

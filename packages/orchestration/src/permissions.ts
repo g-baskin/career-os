@@ -76,6 +76,8 @@ export const protectedCommandPermissions: Record<string, PermissionName> = {
   "profile_facts.block": "modify_master_profile",
   "profile_facts.list": "modify_master_profile",
   "profile_facts.seed_initial": "modify_master_profile",
+  "master_resume.import": "modify_master_profile",
+  "master_resume.get": "modify_master_profile",
   "followup.create": "create_followup",
   "followup.schedule": "schedule_followup",
   "followup.auto_send": "auto_send_followup"
@@ -88,7 +90,9 @@ const profileFactsV1Commands = new Set([
   "profile_facts.verify",
   "profile_facts.block",
   "profile_facts.list",
-  "profile_facts.seed_initial"
+  "profile_facts.seed_initial",
+  "master_resume.import",
+  "master_resume.get"
 ]);
 const criticalPermissions = new Set<PermissionName>(["submit_application", "auto_send_followup", "send_email"]);
 const highRiskPermissions = new Set<PermissionName>(["use_browser", "upload_file", "contact_recruiter", "contact_recruiter_first_time", "answer_sensitive_questions", "modify_master_profile", "export_document_for_submission", "write_calendar"]);
@@ -159,7 +163,7 @@ export class PermissionPolicyService implements PermissionService {
     }
 
     if (profileFactsV1Commands.has(command.type)) {
-      return { status: "allowed", permission, reason: "Profile Facts v1 local editing is allowed; stricter master-profile approval is deferred.", riskLevel: "low", requiresApproval: false };
+      return { status: "allowed", permission, reason: "Profile Facts and Master Resume local editing are allowed; stricter master-profile approval is deferred.", riskLevel: "low", requiresApproval: false };
     }
 
     if (permission === "unregistered_command") {

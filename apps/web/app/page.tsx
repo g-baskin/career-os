@@ -17,6 +17,7 @@ const workspaceLabels = [
   "Email Center",
   "Calendar / Interviews",
   "Resume Factory",
+  "Master Resume Import",
   "Documents",
   "Follow-Ups",
   "Market Intelligence",
@@ -87,6 +88,15 @@ export default function Page() {
         <p className="muted">
           Event-driven dashboard shell with human approval gates; no auto-submit and no LinkedIn scraping.
         </p>
+
+        <section className="section">
+          <h2>Source of Truth</h2>
+          <div className="grid">
+            <a className="card" href="/master-resume"><strong>Master Resume Import</strong><p className="muted">Paste resume text into needs-review Profile Facts.</p></a>
+            <a className="card" href="/profile-facts"><strong>Profile Facts</strong><p className="muted">Verify or block facts before document generation.</p></a>
+            <a className="card" href="/resumes"><strong>Resume Factory</strong><p className="muted">Generate drafts from verified facts only.</p></a>
+          </div>
+        </section>
 
         <section id="todays-mission" className="section">
           <h2>Today’s Mission</h2>

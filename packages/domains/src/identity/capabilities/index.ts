@@ -4,8 +4,8 @@ export const profileFactsCapability: CapabilityDefinition = {
   name: "ProfileFactsCapability",
   description: "Maintains verified source-of-truth user facts for truthfulness-guarded document generation.",
   workers: ["ProfileFactsWorker"],
-  commands: ["profile_facts.create", "profile_facts.update", "profile_facts.archive", "profile_facts.verify", "profile_facts.block", "profile_facts.list", "profile_facts.seed_initial"],
-  events: ["profile_fact.created", "profile_fact.updated", "profile_fact.verified", "profile_fact.blocked", "profile_fact.archived", "profile_facts.seeded"],
+  commands: ["profile_facts.create", "profile_facts.update", "profile_facts.archive", "profile_facts.verify", "profile_facts.block", "profile_facts.list", "profile_facts.seed_initial", "master_resume.import", "master_resume.get"],
+  events: ["profile_fact.created", "profile_fact.updated", "profile_fact.verified", "profile_fact.blocked", "profile_fact.archived", "profile_facts.seeded", "master_resume.imported", "master_resume.parsed", "profile_fact.candidate_created", "profile_facts.review_queue_updated"],
   permissions: ["modify_master_profile"]
 };
 

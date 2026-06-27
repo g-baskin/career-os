@@ -74,15 +74,23 @@ The platform is designed so future products such as Sales OS, Grant OS, Real Est
 - `/resumes` provides a local demo workspace with a Splunk / Cribl Platform Engineer payload, markdown preview, truthfulness status, keyword alignment, and safety warnings.
 - CISSP, Security+, clearance, fake employers, and fake metrics remain unclaimed unless verified Profile Facts allow them and the guard passes.
 
+## Phase 8 Master Resume Import v1
+
+- `/master-resume` accepts pasted plain-text resume content.
+- `POST /api/master-resume/import` stores the import, captures a source snapshot, parses deterministic candidate facts, and creates needs-review Profile Facts.
+- Imported facts start with `allowedInResume: false` until the user verifies them.
+- Blocked CISSP, Security+, and clearance claims shadow duplicate candidates.
+- Resume Factory continues to use verified Profile Facts only.
+
 ## Resume Factory local demo
 
 ```bash
 npm run dev
 ```
 
-Then open `http://localhost:3000/profile-facts`, click `Seed Initial Profile Facts`, open `http://localhost:3000/resumes`, and click `Generate Demo Splunk/Cribl Resume`.
+Then open `http://localhost:3000/master-resume`, click `Import + Safety Blocks`, verify one Splunk/Cribl fact, open `http://localhost:3000/profile-facts`, confirm the source-of-truth state, open `http://localhost:3000/resumes`, and click `Generate Demo Splunk/Cribl Resume`.
 
-Confirm the preview appears, truthfulness status appears, seeded Profile Facts are used, CISSP/Security+/clearance remain blocked, and no email/upload/submit/apply action happened.
+Confirm the preview appears, truthfulness status appears, verified Profile Facts are used, needs-review facts are ignored, CISSP/Security+/clearance remain blocked, and no email/upload/submit/apply action happened.
 
 ## Safety rules
 
@@ -102,6 +110,7 @@ LinkedIn scraping, CAPTCHA bypassing, proxy scraping, email sending, browser aut
 - `docs/PHASE-05-HUMAN-APPROVAL-GATES.md`
 - `docs/PHASE-06-APPROVED-COMMAND-REPLAY.md`
 - `docs/PHASE-07-RESUME-FACTORY-V1.md`
+- `docs/PHASE-08-MASTER-RESUME-IMPORT-V1.md`
 - `docs/RESUME-FACTORY-DEMO.md`
 - `docs/ADR/0003-command-bus-orchestrator.md`
 - `docs/ADR/0004-human-approval-gates.md`

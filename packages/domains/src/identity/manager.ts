@@ -3,11 +3,12 @@ import type { SnapshotStore } from "@career-os/snapshots";
 import type { CareerCommand, CommandResult, DomainDefinition, DomainExecutionContext, DomainManagerContract } from "@career-os/shared";
 import type { StateStore } from "@career-os/state";
 import { profileFactsCapability } from "./capabilities";
+import { prismaMasterResumeStore, type MasterResumeStore, type ParsedMasterResumeFact } from "./master-resume-service";
 import {
+  INITIAL_BLOCKED_PROFILE_FACTS,
   prismaProfileFactsStore,
   profileFactResumeText,
   selectBlockedClaimLabels,
-  selectResumeAllowedFacts,
   selectResumeAllowedProfileFacts,
   type ProfileFactInput,
   type ProfileFactRecord,
@@ -22,7 +23,9 @@ export const PROFILE_FACT_COMMANDS = [
   "profile_facts.verify",
   "profile_facts.block",
   "profile_facts.list",
-  "profile_facts.seed_initial"
+  "profile_facts.seed_initial",
+  "master_resume.import",
+  "master_resume.get"
 ];
 
 export const PROFILE_FACT_EVENTS = [
@@ -31,12 +34,19 @@ export const PROFILE_FACT_EVENTS = [
   "profile_fact.verified",
   "profile_fact.blocked",
   "profile_fact.archived",
-  "profile_facts.seeded"
+  "profile_facts.seeded",
+  "master_resume.imported",
+  "master_resume.parsed",
+  "profile_fact.candidate_created",
+  "profile_facts.review_queue_updated"
 ];
 
 export const PROFILE_FACTS_CURRENT_PROJECTION = "profile_facts.current";
 export const PROFILE_FACTS_RESUME_ALLOWED_PROJECTION = "profile_facts.resume_allowed";
 export const PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION = "profile_facts.blocked_claims";
+export const PROFILE_FACTS_REVIEW_QUEUE_PROJECTION = "profile_facts.review_queue";
+export const MASTER_RESUME_CURRENT_PROJECTION = "master_resume.current";
+export const MASTER_RESUME_SOURCE_SNAPSHOT = "master_resume.source_text";
 
 export const definition: DomainDefinition = {
   name: "Identity Domain",
@@ -58,6 +68,7 @@ type IdentityContext = DomainExecutionContext & {
   stateStore: StateStore;
   snapshotStore: SnapshotStore;
   profileFactsStore?: ProfileFactsStore;
+  masterResumeStore?: MasterResumeStore;
 };
 
 type ProfileFactsPayload = Partial<ProfileFactInput & ProfileFactUpdateInput> & {
@@ -65,6 +76,8 @@ type ProfileFactsPayload = Partial<ProfileFactInput & ProfileFactUpdateInput> & 
   userId?: string;
   status?: string;
   filter?: "all" | "verified" | "needs_review" | "blocked" | "resume_allowed";
+  resumeText?: string;
+  source?: string;
 };
 
 function isPayload(value: unknown): value is ProfileFactsPayload {
@@ -113,12 +126,21 @@ function factEventPayload(fact: ProfileFactRecord) {
   };
 }
 
+function normalizedClaimText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9+#/]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function candidateKey(candidate: Pick<ParsedMasterResumeFact | ProfileFactRecord, "factType" | "label">) {
+  return `${candidate.factType}:${normalizedClaimText(candidate.label)}`;
+}
+
 function summarizeFacts(userId: string, facts: ProfileFactRecord[]) {
   const resumeAllowedFacts = selectResumeAllowedProfileFacts(facts);
   const blockedFacts = facts.filter((fact) => fact.isBlocked || fact.verificationStatus === "blocked");
   const needsReview = facts.filter((fact) => fact.requiresReview || fact.verificationStatus === "needs_review");
   return {
     userId,
+    verifiedFacts: facts.filter((fact) => fact.verificationStatus === "verified").length,
     verifiedResumeFacts: resumeAllowedFacts.length,
     blockedClaims: blockedFacts.length,
     needsReview: needsReview.length,
@@ -178,6 +200,7 @@ async function updateProfileFactProjections(context: IdentityContext, userId: st
   const facts = await store.list({ userId, filter: "all" });
   const resumeAllowed = selectResumeAllowedProfileFacts(facts);
   const blockedClaims = facts.filter((fact) => fact.isBlocked || fact.verificationStatus === "blocked");
+  const needsReview = facts.filter((fact) => fact.requiresReview || fact.verificationStatus === "needs_review");
   const summary = summarizeFacts(userId, facts);
 
   await context.stateStore.upsertProjection({
@@ -209,6 +232,72 @@ async function updateProfileFactProjections(context: IdentityContext, userId: st
     data: { userId, facts: blockedClaims, blockedClaims: selectBlockedClaimLabels(facts), count: blockedClaims.length, updatedAt: new Date().toISOString() },
     updatedAt: new Date()
   });
+
+  await context.stateStore.upsertProjection({
+    userId,
+    projectionType: PROFILE_FACTS_REVIEW_QUEUE_PROJECTION,
+    entityType: "user",
+    entityId: userId,
+    sourceEventId,
+    data: { userId, facts: needsReview, count: needsReview.length, updatedAt: new Date().toISOString() },
+    updatedAt: new Date()
+  });
+}
+
+async function ensureBlockedSafetyClaims(context: IdentityContext, userId: string) {
+  const store = context.profileFactsStore ?? prismaProfileFactsStore;
+  const existingFacts = await store.list({ userId, filter: "all" });
+  const existingKeys = new Set(existingFacts.map(candidateKey));
+  const ensuredFacts: ProfileFactRecord[] = [];
+
+  for (const seed of INITIAL_BLOCKED_PROFILE_FACTS) {
+    const key = candidateKey({ factType: seed.factType, label: seed.label });
+    if (existingKeys.has(key)) continue;
+    const blocked = await store.block({ userId, factType: seed.factType, label: seed.label, blockedReason: seed.blockedReason ?? "Blocked safety claim." });
+    if (blocked) ensuredFacts.push(blocked);
+  }
+
+  return ensuredFacts;
+}
+
+async function createCandidateFacts(context: IdentityContext, userId: string, candidates: ParsedMasterResumeFact[], source: string) {
+  const store = context.profileFactsStore ?? prismaProfileFactsStore;
+  const existingFacts = await store.list({ userId, filter: "all" });
+  const existingKeys = new Set(existingFacts.map(candidateKey));
+  const blockedLabels = new Set(selectBlockedClaimLabels(existingFacts).map(normalizedClaimText));
+  const createdFacts: ProfileFactRecord[] = [];
+  const skippedCandidates: Array<{ label: string; factType: string; reason: string }> = [];
+
+  for (const candidate of candidates) {
+    const key = candidateKey(candidate);
+    const blockedByLabel = blockedLabels.has(normalizedClaimText(candidate.label));
+    if (existingKeys.has(key) || blockedByLabel) {
+      skippedCandidates.push({ label: candidate.label, factType: candidate.factType, reason: blockedByLabel ? "blocked_claim" : "existing_fact" });
+      continue;
+    }
+
+    const fact = await store.create({
+      userId,
+      factType: candidate.factType,
+      category: candidate.category,
+      label: candidate.label,
+      value: candidate.value,
+      description: candidate.description,
+      source,
+      sourceType: "resume_import",
+      confidence: candidate.confidence,
+      verificationStatus: "needs_review",
+      allowedInResume: false,
+      allowedInCoverLetter: false,
+      allowedInRecruiterMessage: false,
+      requiresReview: true,
+      isBlocked: false
+    });
+    createdFacts.push(fact);
+    existingKeys.add(key);
+  }
+
+  return { createdFacts, skippedCandidates };
 }
 
 export class IdentityManager implements DomainManagerContract {
@@ -225,7 +314,137 @@ export class IdentityManager implements DomainManagerContract {
     if (!isPayload(command.payload)) return validationError(command, "PROFILE_FACTS_PAYLOAD_REQUIRED", "Profile Facts commands require an object payload.");
     const executionContext = context as IdentityContext;
     const store = executionContext.profileFactsStore ?? prismaProfileFactsStore;
+    const masterResumeStore = executionContext.masterResumeStore ?? prismaMasterResumeStore;
     const payload = command.payload;
+
+    if (command.type === "master_resume.get") {
+      const userId = stringFrom(payload.userId ?? command.entityId);
+      if (!userId) return validationError(command, "USER_ID_REQUIRED", "userId is required to get a master resume.");
+      const masterResume = await masterResumeStore.getCurrent(userId);
+      const reviewQueue = await store.list({ userId, filter: "needs_review" });
+      return { ok: true, status: "completed", commandId: command.id, data: { masterResume, reviewQueue, summary: summarizeFacts(userId, await store.list({ userId, filter: "all" })) } };
+    }
+
+    if (command.type === "master_resume.import") {
+      const userId = stringFrom(payload.userId ?? command.entityId);
+      const resumeText = stringFrom(payload.resumeText);
+      const source = optionalStringFrom(payload.source) ?? "pasted_plain_text";
+      if (!userId) return validationError(command, "USER_ID_REQUIRED", "userId is required to import a master resume.");
+      if (!resumeText) return validationError(command, "MASTER_RESUME_TEXT_REQUIRED", "resumeText is required to import a master resume.");
+
+      const masterResume = await masterResumeStore.importResume({ userId, resumeText, source });
+      const sourceSnapshot = await executionContext.snapshotStore.captureSnapshot({
+        userId,
+        entityType: "master_resume",
+        entityId: masterResume.id,
+        snapshotType: MASTER_RESUME_SOURCE_SNAPSHOT,
+        source: MASTER_RESUME_SOURCE_SNAPSHOT,
+        data: { userId, masterResumeId: masterResume.id, source, rawText: masterResume.content.rawText, importedAt: masterResume.content.importedAt }
+      });
+
+      const importedEvent = await executionContext.eventStore.append({
+        eventType: "master_resume.imported",
+        entityType: "master_resume",
+        entityId: masterResume.id,
+        domain: definition.slug,
+        manager: definition.manager,
+        capability: "ProfileFactsCapability",
+        worker: "ProfileFactsWorker",
+        userId: command.userId,
+        payload: { userId, masterResumeId: masterResume.id, source, rawTextLength: masterResume.content.stats.rawTextLength, sourceSnapshotId: sourceSnapshot.id },
+        evidence: { sourceSnapshotId: sourceSnapshot.id, parseVersion: masterResume.content.parseVersion },
+        confidence: 1
+      });
+
+      const ensuredBlockedFacts = await ensureBlockedSafetyClaims(executionContext, userId);
+      for (const fact of ensuredBlockedFacts) {
+        await executionContext.eventStore.append({
+          eventType: "profile_fact.blocked",
+          entityType: "profile_fact",
+          entityId: fact.id,
+          domain: definition.slug,
+          manager: definition.manager,
+          capability: "ProfileFactsCapability",
+          worker: "ProfileFactsWorker",
+          userId: command.userId,
+          payload: { ...factEventPayload(fact), masterResumeId: masterResume.id, sourceSnapshotId: sourceSnapshot.id, safetySeededBy: "master_resume.import" },
+          evidence: { sourceSnapshotId: sourceSnapshot.id, candidateSource: "master_resume.import" },
+          confidence: 1
+        });
+      }
+
+      const { createdFacts, skippedCandidates } = await createCandidateFacts(executionContext, userId, masterResume.content.candidateFacts, `Master Resume import ${masterResume.id}`);
+      for (const fact of createdFacts) {
+        await executionContext.eventStore.append({
+          eventType: "profile_fact.candidate_created",
+          entityType: "profile_fact",
+          entityId: fact.id,
+          domain: definition.slug,
+          manager: definition.manager,
+          capability: "ProfileFactsCapability",
+          worker: "ProfileFactsWorker",
+          userId: command.userId,
+          payload: { ...factEventPayload(fact), masterResumeId: masterResume.id, sourceSnapshotId: sourceSnapshot.id },
+          evidence: { sourceSnapshotId: sourceSnapshot.id, candidateSource: "master_resume.import" },
+          confidence: fact.confidence
+        });
+      }
+
+      const parsedEvent = await executionContext.eventStore.append({
+        eventType: "master_resume.parsed",
+        entityType: "master_resume",
+        entityId: masterResume.id,
+        domain: definition.slug,
+        manager: definition.manager,
+        capability: "ProfileFactsCapability",
+        worker: "ProfileFactsWorker",
+        userId: command.userId,
+        payload: {
+          userId,
+          masterResumeId: masterResume.id,
+          candidateFactCount: masterResume.content.candidateFacts.length,
+          createdCandidateFactIds: createdFacts.map((fact) => fact.id),
+          skippedCandidates,
+          ensuredBlockedClaimIds: ensuredBlockedFacts.map((fact) => fact.id)
+        },
+        evidence: { sourceSnapshotId: sourceSnapshot.id, importedEventId: importedEvent.id, parser: masterResume.content.parseVersion },
+        confidence: 1
+      });
+
+      await executionContext.stateStore.upsertProjection({
+        userId,
+        projectionType: MASTER_RESUME_CURRENT_PROJECTION,
+        entityType: "user",
+        entityId: userId,
+        sourceEventId: parsedEvent.id,
+        data: { userId, masterResume, sourceSnapshotId: sourceSnapshot.id, candidateFacts: masterResume.content.candidateFacts, createdCandidateFacts: createdFacts, skippedCandidates, ensuredBlockedClaims: ensuredBlockedFacts, updatedAt: new Date().toISOString() },
+        updatedAt: new Date()
+      });
+
+      await updateProfileFactProjections(executionContext, userId, parsedEvent.id);
+      const reviewQueue = await store.list({ userId, filter: "needs_review" });
+      await executionContext.eventStore.append({
+        eventType: "profile_facts.review_queue_updated",
+        entityType: "user",
+        entityId: userId,
+        domain: definition.slug,
+        manager: definition.manager,
+        capability: "ProfileFactsCapability",
+        worker: "ProfileFactsWorker",
+        userId: command.userId,
+        payload: { userId, count: reviewQueue.length, sourceEventId: parsedEvent.id },
+        confidence: 1
+      });
+
+      return {
+        ok: true,
+        status: "completed",
+        commandId: command.id,
+        data: { masterResume, candidateFacts: createdFacts, skippedCandidates, ensuredBlockedClaims: ensuredBlockedFacts, reviewQueue, sourceSnapshotId: sourceSnapshot.id },
+        emittedEvents: ["master_resume.imported", "profile_fact.blocked", "profile_fact.candidate_created", "master_resume.parsed", "profile_facts.review_queue_updated"],
+        updatedProjections: [MASTER_RESUME_CURRENT_PROJECTION, PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION, PROFILE_FACTS_REVIEW_QUEUE_PROJECTION]
+      };
+    }
 
     if (command.type === "profile_facts.list") {
       const userId = stringFrom(payload.userId);
@@ -250,7 +469,7 @@ export class IdentityManager implements DomainManagerContract {
         confidence: 1
       });
       await updateProfileFactProjections(executionContext, userId, event.id);
-      return { ok: true, status: "completed", commandId: command.id, data: seeded, emittedEvents: ["profile_facts.seeded"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION] };
+      return { ok: true, status: "completed", commandId: command.id, data: seeded, emittedEvents: ["profile_facts.seeded"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION, PROFILE_FACTS_REVIEW_QUEUE_PROJECTION] };
     }
 
     if (command.type === "profile_facts.create") {
@@ -261,7 +480,7 @@ export class IdentityManager implements DomainManagerContract {
       const fact = await store.create(input);
       const event = await executionContext.eventStore.append({ eventType: "profile_fact.created", entityType: "profile_fact", entityId: fact.id, domain: definition.slug, manager: definition.manager, capability: "ProfileFactsCapability", worker: "ProfileFactsWorker", payload: factEventPayload(fact), confidence: fact.confidence });
       await updateProfileFactProjections(executionContext, fact.userId, event.id);
-      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.created"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION] };
+      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.created"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION, PROFILE_FACTS_REVIEW_QUEUE_PROJECTION] };
     }
 
     if (command.type === "profile_facts.update") {
@@ -271,7 +490,7 @@ export class IdentityManager implements DomainManagerContract {
       if (!fact) return validationError(command, "PROFILE_FACT_NOT_FOUND", "Profile fact not found.");
       const event = await executionContext.eventStore.append({ eventType: "profile_fact.updated", entityType: "profile_fact", entityId: fact.id, domain: definition.slug, manager: definition.manager, capability: "ProfileFactsCapability", worker: "ProfileFactsWorker", payload: factEventPayload(fact), confidence: fact.confidence });
       await updateProfileFactProjections(executionContext, fact.userId, event.id);
-      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.updated"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION] };
+      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.updated"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION, PROFILE_FACTS_REVIEW_QUEUE_PROJECTION] };
     }
 
     if (command.type === "profile_facts.verify") {
@@ -281,7 +500,7 @@ export class IdentityManager implements DomainManagerContract {
       if (!fact) return validationError(command, "PROFILE_FACT_NOT_FOUND", "Profile fact not found.");
       const event = await executionContext.eventStore.append({ eventType: "profile_fact.verified", entityType: "profile_fact", entityId: fact.id, domain: definition.slug, manager: definition.manager, capability: "ProfileFactsCapability", worker: "ProfileFactsWorker", payload: factEventPayload(fact), confidence: fact.confidence });
       await updateProfileFactProjections(executionContext, fact.userId, event.id);
-      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.verified"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION] };
+      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.verified"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION, PROFILE_FACTS_REVIEW_QUEUE_PROJECTION] };
     }
 
     if (command.type === "profile_facts.block") {
@@ -293,7 +512,7 @@ export class IdentityManager implements DomainManagerContract {
       if (!fact) return validationError(command, "PROFILE_FACT_BLOCK_TARGET_REQUIRED", "id or label is required to block a profile fact.");
       const event = await executionContext.eventStore.append({ eventType: "profile_fact.blocked", entityType: "profile_fact", entityId: fact.id, domain: definition.slug, manager: definition.manager, capability: "ProfileFactsCapability", worker: "ProfileFactsWorker", payload: factEventPayload(fact), confidence: fact.confidence });
       await updateProfileFactProjections(executionContext, fact.userId, event.id);
-      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.blocked"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION] };
+      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.blocked"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION, PROFILE_FACTS_REVIEW_QUEUE_PROJECTION] };
     }
 
     if (command.type === "profile_facts.archive") {
@@ -303,7 +522,7 @@ export class IdentityManager implements DomainManagerContract {
       if (!fact) return validationError(command, "PROFILE_FACT_NOT_FOUND", "Profile fact not found.");
       const event = await executionContext.eventStore.append({ eventType: "profile_fact.archived", entityType: "profile_fact", entityId: fact.id, domain: definition.slug, manager: definition.manager, capability: "ProfileFactsCapability", worker: "ProfileFactsWorker", payload: factEventPayload(fact), confidence: fact.confidence });
       await updateProfileFactProjections(executionContext, fact.userId, event.id);
-      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.archived"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION] };
+      return { ok: true, status: "completed", commandId: command.id, data: { fact }, emittedEvents: ["profile_fact.archived"], updatedProjections: [PROFILE_FACTS_CURRENT_PROJECTION, PROFILE_FACTS_RESUME_ALLOWED_PROJECTION, PROFILE_FACTS_BLOCKED_CLAIMS_PROJECTION, PROFILE_FACTS_REVIEW_QUEUE_PROJECTION] };
     }
 
     return validationError(command, "PROFILE_FACT_COMMAND_UNSUPPORTED", `Unsupported Profile Facts command: ${command.type}`);

@@ -79,6 +79,22 @@ describe("ResumeFactoryManager", () => {
     expect(context.eventStore.listByType("profile_facts.used_by_resume_factory").length).toBe(1);
   });
 
+  it("ignores needs-review Profile Facts from resume imports", async () => {
+    const manager = new ResumeFactoryManager();
+    const profileFactsStore = new InMemoryProfileFactsStore();
+    profileFactsStore.create({ userId: "user-1", factType: "skill", label: "Splunk", value: "Administered Splunk", sourceType: "resume_import", verificationStatus: "needs_review", allowedInResume: false, requiresReview: true });
+    const context = createContext(profileFactsStore);
+
+    const result = await manager.handle(
+      command({ userId: "user-1", jobId: "job-1", companyId: "company-1", applicationPacketId: "packet-1", targetRole: "Splunk Engineer", verifiedFacts: ["This supplied fallback must be ignored when Profile Facts exist."] }),
+      context
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("VERIFIED_FACTS_REQUIRED");
+    expect(context.eventStore.listByType("resume.generated").length).toBe(0);
+  });
+
   it("uses local demo fallback facts when demo-user has no profile facts yet", async () => {
     const manager = new ResumeFactoryManager();
     const context = createContext(new InMemoryProfileFactsStore());

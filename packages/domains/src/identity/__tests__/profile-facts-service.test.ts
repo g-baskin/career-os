@@ -2,6 +2,7 @@ import { InMemoryEventStore } from "@career-os/events";
 import { InMemorySnapshotStore } from "@career-os/snapshots";
 import { InMemoryStateStore } from "@career-os/state";
 import { describe, expect, it } from "vitest";
+import { InMemoryMasterResumeStore, parseMasterResumeText } from "../master-resume-service";
 import { IdentityManager } from "../manager";
 import { InMemoryProfileFactsStore, isShadowedByBlockedClaim, selectBlockedClaimLabels, selectResumeAllowedFacts } from "../profile-facts-service";
 
@@ -13,9 +14,28 @@ function command(type: string, payload: Record<string, unknown>) {
   return { id: `command-${type}`, type, requestedBy: "api" as const, entityType: "user", entityId: String(payload.userId ?? payload.id ?? "demo-user"), payload, createdAt: new Date().toISOString() };
 }
 
-function context(store = createStore()) {
-  return { eventStore: new InMemoryEventStore(), stateStore: new InMemoryStateStore(), snapshotStore: new InMemorySnapshotStore(), profileFactsStore: store };
+function context(store = createStore(), masterResumeStore = new InMemoryMasterResumeStore()) {
+  return { eventStore: new InMemoryEventStore(), stateStore: new InMemoryStateStore(), snapshotStore: new InMemorySnapshotStore(), profileFactsStore: store, masterResumeStore };
 }
+
+const sampleResumeText = `Splunk / Cribl Platform Engineer
+Skills: Splunk, Cribl, SIEM, log onboarding, Linux, Terraform, AWS, Azure, GCP, observability.
+Experience: Built security data pipelines and platform engineering workflows with props/transforms and GDI.
+Certifications: Splunk Architect, Cribl Admin, CISSP, Security+.
+Clearance: active clearance.`;
+
+describe("Master Resume parser", () => {
+  it("deterministically parses candidate facts as needs-review resume-import facts", () => {
+    const first = parseMasterResumeText(sampleResumeText);
+    const second = parseMasterResumeText(sampleResumeText);
+
+    expect(JSON.stringify(first.map((fact) => `${fact.factType}:${fact.label}`))).toBe(JSON.stringify(second.map((fact) => `${fact.factType}:${fact.label}`)));
+    expect(first.some((fact) => fact.label === "Splunk")).toBe(true);
+    expect(first.some((fact) => fact.label === "CISSP")).toBe(true);
+    expect(first.every((fact) => fact.verificationStatus === "needs_review")).toBe(true);
+    expect(first.every((fact) => fact.allowedInResume === false)).toBe(true);
+  });
+});
 
 describe("Profile Facts service", () => {
   it("creates, updates, verifies, and archives facts", () => {
@@ -28,6 +48,7 @@ describe("Profile Facts service", () => {
     expect(created.label).toBe("Splunk");
     expect(updated?.allowedInResume).toBe(true);
     expect(verified?.verificationStatus).toBe("verified");
+    expect(verified?.allowedInResume).toBe(true);
     expect(Boolean(archived?.archivedAt)).toBe(true);
   });
 
@@ -117,5 +138,34 @@ describe("IdentityManager Profile Facts commands", () => {
     expect(blocked.ok).toBe(true);
     expect(eventTypes.includes("profile_fact.created")).toBe(true);
     expect(eventTypes.includes("profile_fact.blocked")).toBe(true);
+  });
+
+  it("imports a master resume into needs-review candidate facts without unblocking blocked claims", async () => {
+    const store = createStore();
+    const manager = new IdentityManager();
+    const masterResumeStore = new InMemoryMasterResumeStore();
+    const testContext = context(store, masterResumeStore);
+
+    const result = await manager.handle(command("master_resume.import", { userId: "demo-user", resumeText: sampleResumeText, source: "test_paste" }), testContext);
+    const data = result.data as { candidateFacts: Array<{ label: string; verificationStatus: string; allowedInResume: boolean }>; skippedCandidates: Array<{ label: string; reason: string }> };
+    const reviewProjection = testContext.stateStore.getProjection("user", "demo-user", "profile_facts.review_queue");
+    const masterProjection = testContext.stateStore.getProjection("user", "demo-user", "master_resume.current");
+    const snapshots = testContext.snapshotStore.listBySnapshotType("master_resume.source_text");
+    const eventTypes = testContext.eventStore.listRecent(50).map((event) => event.eventType);
+
+    expect(result.ok).toBe(true);
+    expect(data.candidateFacts.length > 0).toBe(true);
+    expect(data.candidateFacts.some((fact) => fact.label === "Splunk")).toBe(true);
+    expect(data.candidateFacts.every((fact) => fact.verificationStatus === "needs_review")).toBe(true);
+    expect(data.candidateFacts.every((fact) => fact.allowedInResume === false)).toBe(true);
+    expect(data.candidateFacts.some((fact) => fact.label === "CISSP")).toBe(false);
+    expect(data.skippedCandidates.some((fact) => fact.label === "CISSP" && fact.reason === "blocked_claim")).toBe(true);
+    expect(Boolean(reviewProjection)).toBe(true);
+    expect(Boolean(masterProjection)).toBe(true);
+    expect(snapshots.length).toBe(1);
+    expect(eventTypes.includes("master_resume.imported")).toBe(true);
+    expect(eventTypes.includes("master_resume.parsed")).toBe(true);
+    expect(eventTypes.includes("profile_fact.candidate_created")).toBe(true);
+    expect(eventTypes.includes("profile_facts.review_queue_updated")).toBe(true);
   });
 });

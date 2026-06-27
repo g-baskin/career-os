@@ -360,7 +360,7 @@ export class InMemoryProfileFactsStore implements ProfileFactsStore {
   }
 
   verify(id: string) {
-    return this.update({ id, verificationStatus: "verified", requiresReview: false, isBlocked: false });
+    return this.update({ id, verificationStatus: "verified", allowedInResume: true, allowedInCoverLetter: true, allowedInRecruiterMessage: true, requiresReview: false, isBlocked: false });
   }
 
   block(input: { userId: string; id?: string; label?: string; factType?: string; blockedReason: string }) {
@@ -441,7 +441,7 @@ export class PrismaProfileFactsStore implements ProfileFactsStore {
   }
 
   async verify(id: string) {
-    return this.update({ id, verificationStatus: "verified", requiresReview: false, isBlocked: false });
+    return this.update({ id, verificationStatus: "verified", allowedInResume: true, allowedInCoverLetter: true, allowedInRecruiterMessage: true, requiresReview: false, isBlocked: false });
   }
 
   async block(input: { userId: string; id?: string; label?: string; factType?: string; blockedReason: string }) {

@@ -12,6 +12,14 @@ describe("PermissionPolicyService", () => {
     expect(decision.permission).toBe("write_jobs");
   });
 
+  it("allows local Master Resume import in the Profile Facts v1 safety carve-out", () => {
+    const decision = policy.evaluate(createCommand({ type: "master_resume.import", requestedBy: "api", payload: {} }));
+
+    expect(decision.status).toBe("allowed");
+    expect(decision.permission).toBe("modify_master_profile");
+    expect(decision.requiresApproval).toBe(false);
+  });
+
   it("requires approval for sensitive permissions", () => {
     const decision = policy.evaluate(createCommand({ type: "email.send", requestedBy: "api", payload: {} }));
 

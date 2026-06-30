@@ -94,6 +94,7 @@ LinkedIn scraping, CAPTCHA bypassing, proxy scraping, email sending, browser aut
 - `docs/ARCHITECTURE_BIBLE.md`
 - `docs/CONSTITUTION.md`
 - `docs/DEVELOPER_GUIDE.md`
+- `docs/ENTERPRISE_READINESS.md`
 - `docs/ADR/0001-domain-architecture.md`
 - `docs/ADR/0002-event-state-snapshot-stores.md`
 - `docs/PHASE-03-DURABLE-STORES.md`

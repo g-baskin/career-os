@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { POST, resumeGenerateRequestSchema } from "../route";
+import { POST } from "../route";
+import { resumeGenerateRequestSchema } from "../schema";
 
 describe("resume route schema", () => {
   it("accepts safe resume generation requests", () => {

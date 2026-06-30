@@ -6,6 +6,26 @@ The platform layer provides the System Kernel, Domain Registry, Command Bus, Eve
 
 Career OS runs on that platform as a career-management product for job intelligence, application packets, relationships, documents, interviews, follow-ups, and career growth.
 
+## Docker Desktop production-style start
+
+```bash
+cp .env.example .env
+npx workos auth login
+npx workos config redirect add http://localhost:3000/auth/callback
+npx workos config homepage-url set http://localhost:3000
+npx workos config cors add http://localhost:3000
+# Copy WORKOS_API_KEY and WORKOS_CLIENT_ID from the active WorkOS CLI environment or dashboard into .env.
+docker compose up --build
+```
+
+Open `http://localhost:3000`.
+
+Docker starts Postgres, Redis, runs `prisma migrate deploy`, then starts the Next.js web app with `CAREER_OS_COMMAND_RUNTIME=prisma`.
+
+The checked-in WorkOS placeholder values wire AuthKit into the app, but hosted login will only complete after replacing them with real WorkOS values. Compose reads `WORKOS_*` values from `.env` when present and falls back to placeholders otherwise.
+
+Local demo seed/dev routes stay disabled in this Docker flow; set `CAREER_OS_ENABLE_LOCAL_DEMO_ROUTES=true` only for local development demos.
+
 ## Architecture
 
 Every domain follows:

@@ -1,16 +1,15 @@
 import { domainRegistry } from "@career-os/domains";
-import { eventStore } from "@career-os/events";
-import { createInMemoryOrchestrator, localApprovalRequestService } from "@career-os/orchestration";
-import { snapshotStore } from "@career-os/snapshots";
-import { stateStore } from "@career-os/state";
+import { createInMemoryOrchestrator, prismaApprovalRequestService } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../api/_lib/auth";
+import { getPersistentRuntimeCounts } from "../api/_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
 const commandBackedCommands = new Set(createInMemoryOrchestrator().listCommandTypes());
 
-async function getApprovalCounts() {
+async function getApprovalCounts(userId: string) {
   try {
-    const approvals = await Promise.resolve(localApprovalRequestService.list());
+    const approvals = (await prismaApprovalRequestService.list()).filter((approval) => approval.userId === userId);
     return {
       total: approvals.length,
       pending: approvals.filter((approval) => approval.status === "pending").length,
@@ -31,10 +30,11 @@ function readinessLabel(domain: (typeof domainRegistry)[number]) {
 }
 
 export default async function SystemHealthPage() {
-  const approvalCounts = await getApprovalCounts();
-  const events = eventStore.list();
-  const projections = stateStore.list();
-  const snapshots = snapshotStore.list();
+  const authUser = await requireAuthenticatedCareerUser();
+  const [approvalCounts, runtimeCounts] = await Promise.all([
+    getApprovalCounts(authUser.userId),
+    getPersistentRuntimeCounts(authUser.userId)
+  ]);
   const commandBackedDomains = domainRegistry.filter((domain) => domain.commands.some((command) => commandBackedCommands.has(command)));
   const implementedDomains = domainRegistry.filter((domain) => domain.status === "implemented");
 
@@ -49,9 +49,9 @@ export default async function SystemHealthPage() {
         <div className="grid">
           <div className="card"><strong>{domainRegistry.length}</strong><p className="muted">registered domain managers</p></div>
           <div className="card"><strong>{commandBackedCommands.size}</strong><p className="muted">command handlers online</p></div>
-          <div className="card"><strong>{events.length}</strong><p className="muted">events recorded</p></div>
-          <div className="card"><strong>{projections.length}</strong><p className="muted">state projections</p></div>
-          <div className="card"><strong>{snapshots.length}</strong><p className="muted">snapshots captured</p></div>
+          <div className="card"><strong>{runtimeCounts.events}</strong><p className="muted">events recorded</p></div>
+          <div className="card"><strong>{runtimeCounts.stateProjections}</strong><p className="muted">state projections</p></div>
+          <div className="card"><strong>{runtimeCounts.snapshots}</strong><p className="muted">snapshots captured</p></div>
           <div className="card"><strong>{approvalCounts.pending}</strong><p className="muted">pending approvals</p></div>
         </div>
       </section>

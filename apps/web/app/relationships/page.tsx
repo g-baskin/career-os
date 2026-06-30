@@ -1,11 +1,14 @@
-import { listRelationshipPeople, type PersonRole } from "@career-os/domains";
+import type { PersonRole } from "@career-os/domains";
+import { requireAuthenticatedCareerUser } from "../api/_lib/auth";
+import { listPersistentRelationshipPeople } from "../api/_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
 const roles: PersonRole[] = ["recruiter", "hiring_manager", "interviewer", "referral", "hr", "unknown"];
 
-export default function RelationshipsPage() {
-  const people = listRelationshipPeople();
+export default async function RelationshipsPage() {
+  const authUser = await requireAuthenticatedCareerUser();
+  const people = await listPersistentRelationshipPeople(authUser.userId);
 
   return (
     <main className="main">

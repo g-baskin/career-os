@@ -89,13 +89,14 @@ function EmptyState() {
   return <p className="muted">No local data touchpoints yet. Seed the demo to create a job pipeline, packet, relationship, resume draft, events, state, and snapshots.</p>;
 }
 
-export default function DataTouchpointsPanel() {
+export default function DataTouchpointsPanel({ enabled }: { enabled: boolean }) {
   const [data, setData] = useState<DataTouchpointsView | undefined>(undefined);
   const [steps, setSteps] = useState<CommandStepSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState("Loading local data touchpoints...");
+  const [message, setMessage] = useState(enabled ? "Loading local data touchpoints..." : "Local demo routes are disabled in this runtime.");
 
   async function refreshTouchpoints() {
+    if (!enabled) return;
     try {
       const response = await fetch("/api/demo/touchpoints", { cache: "no-store" });
       const body = await readJson<TouchpointsEnvelope>(response);
@@ -111,6 +112,7 @@ export default function DataTouchpointsPanel() {
   }
 
   async function seedTouchpoints() {
+    if (!enabled) return;
     setIsLoading(true);
     setMessage("Running local commands through the in-memory data touchpoints...");
     try {
@@ -131,17 +133,19 @@ export default function DataTouchpointsPanel() {
   }
 
   useEffect(() => {
-    void refreshTouchpoints();
-  }, []);
+    if (enabled) void refreshTouchpoints();
+  }, [enabled]);
 
   return (
     <section id="data-touchpoints" className="section">
       <span className="badge">Local data touchpoints</span>
       <h2>Working Data Flow</h2>
-      <p className="muted">Runs safe local commands and shows the records they create across events, state projections, snapshots, packets, and relationships.</p>
-      <button type="button" disabled={isLoading} onClick={() => void seedTouchpoints()}>
-        {isLoading ? "Seeding Data..." : "Seed Demo Data Touchpoints"}
-      </button>
+      <p className="muted">When enabled for local development, this runs safe local commands and shows the records they create across events, state projections, snapshots, packets, and relationships.</p>
+      {enabled ? (
+        <button type="button" disabled={isLoading} onClick={() => void seedTouchpoints()}>
+          {isLoading ? "Seeding Data..." : "Seed Demo Data Touchpoints"}
+        </button>
+      ) : null}
       <p className="muted" aria-live="polite">{message}</p>
 
       {data ? (
@@ -196,7 +200,7 @@ export default function DataTouchpointsPanel() {
             </div>
           </div>
         </>
-      ) : <EmptyState />}
+      ) : enabled ? <EmptyState /> : null}
     </section>
   );
 }

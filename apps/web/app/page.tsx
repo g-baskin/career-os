@@ -1,7 +1,7 @@
-import { domainRegistry, listApplicationPackets, listRelationshipPeople } from "@career-os/domains";
+import { domainRegistry } from "@career-os/domains";
 import { createInMemoryOrchestrator } from "@career-os/orchestration";
-import { snapshotStore } from "@career-os/snapshots";
-import { stateStore } from "@career-os/state";
+import { requireAuthenticatedCareerUser } from "./api/_lib/auth";
+import { getPersistentRuntimeCounts, listPersistentApplicationPackets, listPersistentJobDashboardProjections, listPersistentRelationshipPeople } from "./api/_lib/persistent-state";
 import DataTouchpointsPanel from "./data-touchpoints-panel";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +64,7 @@ const appSections = [
 ];
 
 const commandBackedCommands = new Set(createInMemoryOrchestrator().listCommandTypes());
+const localDemoRoutesEnabled = process.env.CAREER_OS_ENABLE_LOCAL_DEMO_ROUTES === "true";
 
 function buildWorkspaceNavigation(packetDetailHref: string, relationshipDetailHref: string): WorkspaceNavigationItem[] {
   return [
@@ -91,7 +92,7 @@ function buildWorkspaceNavigation(packetDetailHref: string, relationshipDetailHr
   ];
 }
 
-function buildWorkspaceManagerViews(packetCount: number, relationshipCount: number, jobProjectionCount: number): WorkspaceManagerView[] {
+function buildWorkspaceManagerViews(packetCount: number, relationshipCount: number, jobProjectionCount: number, snapshotCount: number): WorkspaceManagerView[] {
   return [
     {
       id: "companies",
@@ -133,7 +134,7 @@ function buildWorkspaceManagerViews(packetCount: number, relationshipCount: numb
       description: "Document workspaces connect resume drafts, packet drafts, source snapshots, and review-only exports.",
       metrics: [
         { label: "application packets", value: packetCount },
-        { label: "snapshots", value: snapshotStore.list().length }
+        { label: "snapshots", value: snapshotCount }
       ],
       actions: [{ label: "Open Resume Factory", href: "/resumes" }]
     },
@@ -217,14 +218,18 @@ function WorkspaceManagerSection({ view }: { view: WorkspaceManagerView }) {
   );
 }
 
-export default function Page() {
-  const packets = listApplicationPackets();
-  const relationships = listRelationshipPeople();
-  const jobProjections = stateStore.listByProjectionType("job.dashboard_segment");
+export default async function Page() {
+  const authUser = await requireAuthenticatedCareerUser();
+  const [packets, relationships, jobProjections, runtimeCounts] = await Promise.all([
+    listPersistentApplicationPackets(authUser.userId),
+    listPersistentRelationshipPeople(authUser.userId),
+    listPersistentJobDashboardProjections(authUser.userId),
+    getPersistentRuntimeCounts(authUser.userId)
+  ]);
   const packetDetailHref = packets[0] ? `/application-packets/${packets[0].id}` : "/packet-detail";
   const relationshipDetailHref = relationships[0] ? `/relationships/${relationships[0].id}` : "/relationship-detail";
   const workspaces = buildWorkspaceNavigation(packetDetailHref, relationshipDetailHref);
-  const workspaceManagerViews = buildWorkspaceManagerViews(packets.length, relationships.length, jobProjections.length);
+  const workspaceManagerViews = buildWorkspaceManagerViews(packets.length, relationships.length, jobProjections.length, runtimeCounts.snapshots);
 
   return (
     <div className="shell">
@@ -245,7 +250,7 @@ export default function Page() {
           Event-driven dashboard shell with human approval gates; no automatic submission and no LinkedIn scraping.
         </p>
 
-        <DataTouchpointsPanel />
+        <DataTouchpointsPanel enabled={localDemoRoutesEnabled} />
 
         <section id="todays-mission" className="section">
           <span className="badge">Mission Manager</span>

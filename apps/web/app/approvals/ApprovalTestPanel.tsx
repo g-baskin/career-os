@@ -12,6 +12,7 @@ import {
 
 interface ApprovalTestPanelProps {
   initialApprovals: ApprovalView[];
+  localDemoRoutesEnabled: boolean;
 }
 
 type LoadingAction = "refresh" | "allowed" | "requires-approval" | "denied" | "approve" | "reject" | "cancel" | "replay";
@@ -86,7 +87,7 @@ function LatestErrorResult({ summary }: { summary?: CommandSummary }) {
   );
 }
 
-export default function ApprovalTestPanel({ initialApprovals }: ApprovalTestPanelProps) {
+export default function ApprovalTestPanel({ initialApprovals, localDemoRoutesEnabled }: ApprovalTestPanelProps) {
   const [approvals, setApprovals] = useState(initialApprovals);
   const [loadingAction, setLoadingAction] = useState<LoadingAction | null>(null);
   const [successMessage, setSuccessMessage] = useState("Ready to exercise approval policy.");
@@ -196,23 +197,30 @@ export default function ApprovalTestPanel({ initialApprovals }: ApprovalTestPane
           <p className="muted">Success: {successMessage}</p>
           {errorMessage ? <p role="alert">Error: {errorMessage}</p> : null}
         </div>
-        <div className="grid">
-          <div className="card">
-            <strong>Allowed command</strong>
-            <p className="muted">Runs safe `jobs.run_pipeline` demo data.</p>
-            <button type="button" disabled={isLoading} onClick={() => void runDevCommand("allowed")}>Run Allowed Command</button>
+        {localDemoRoutesEnabled ? (
+          <div className="grid">
+            <div className="card">
+              <strong>Allowed command</strong>
+              <p className="muted">Runs safe `jobs.run_pipeline` demo data.</p>
+              <button type="button" disabled={isLoading} onClick={() => void runDevCommand("allowed")}>Run Allowed Command</button>
+            </div>
+            <div className="card">
+              <strong>Approval-gated command</strong>
+              <p className="muted">Posts `email.send` demo data to create a pending approval without sending email.</p>
+              <button type="button" disabled={isLoading} onClick={() => void runDevCommand("requires-approval")}>Run Approval-Gated Command</button>
+            </div>
+            <div className="card">
+              <strong>Denied command</strong>
+              <p className="muted">Posts `application.auto_submit` demo data that policy rejects.</p>
+              <button type="button" disabled={isLoading} onClick={() => void runDevCommand("denied")}>Run Denied Command</button>
+            </div>
           </div>
+        ) : (
           <div className="card">
-            <strong>Approval-gated command</strong>
-            <p className="muted">Posts `email.send` demo data to create a pending approval without sending email.</p>
-            <button type="button" disabled={isLoading} onClick={() => void runDevCommand("requires-approval")}>Run Approval-Gated Command</button>
+            <strong>Local demo commands disabled</strong>
+            <p className="muted">Set CAREER_OS_ENABLE_LOCAL_DEMO_ROUTES=true in local development to show demo policy buttons.</p>
           </div>
-          <div className="card">
-            <strong>Denied command</strong>
-            <p className="muted">Posts `application.auto_submit` demo data that policy rejects.</p>
-            <button type="button" disabled={isLoading} onClick={() => void runDevCommand("denied")}>Run Denied Command</button>
-          </div>
-        </div>
+        )}
       </section>
 
       <section className="section">

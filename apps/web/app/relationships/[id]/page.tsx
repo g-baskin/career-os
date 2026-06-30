@@ -1,6 +1,5 @@
-import { getRelationshipPerson } from "@career-os/domains";
-import { eventStore } from "@career-os/events";
-import { stateStore } from "@career-os/state";
+import { requireAuthenticatedCareerUser } from "../../api/_lib/auth";
+import { getPersistentRelationshipPerson, listPersistentEntityEvents, listPersistentEntityProjections } from "../../api/_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +8,8 @@ function displayName(value: string) {
 }
 
 export default async function RelationshipDetailPage({ params }: { params: { id: string } }) {
-  const person = getRelationshipPerson(params.id);
+  const authUser = await requireAuthenticatedCareerUser();
+  const person = await getPersistentRelationshipPerson(authUser.userId, params.id);
 
   if (!person) {
     return (
@@ -35,8 +35,8 @@ export default async function RelationshipDetailPage({ params }: { params: { id:
   }
 
   const [events, projections] = await Promise.all([
-    Promise.resolve(eventStore.listByEntity("person", person.id)),
-    Promise.resolve(stateStore.listByEntity("person", person.id))
+    listPersistentEntityEvents(authUser.userId, "person", person.id),
+    listPersistentEntityProjections(authUser.userId, "person", person.id)
   ]);
 
   return (

@@ -1,13 +1,15 @@
 import { createCommand } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../../../_lib/auth";
 import { executeCommandForReview } from "../../../_lib/command-runtime";
 import { commandResult } from "../../../_lib/responses";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const authUser = await requireAuthenticatedCareerUser();
   const body = await request.json().catch(() => ({}));
   const command = createCommand({
     type: "jobs.run_pipeline",
     requestedBy: "api",
-    userId: body.userId,
+    userId: authUser.userId,
     entityType: "job",
     entityId: params.id,
     payload: {
@@ -20,7 +22,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       employmentType: body.employmentType,
       requiredFields: body.requiredFields,
       hasEasyApply: body.hasEasyApply,
-      userId: body.userId
+      userId: authUser.userId
     }
   });
   const { result } = await executeCommandForReview(request, command);

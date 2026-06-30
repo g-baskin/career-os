@@ -1,10 +1,12 @@
-import { listApplicationPackets } from "@career-os/domains";
 import { redirect } from "next/navigation";
+import { requireAuthenticatedCareerUser } from "../api/_lib/auth";
+import { listPersistentApplicationPackets } from "../api/_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
-export default function PacketDetailManagerPage() {
-  const packet = listApplicationPackets()[0];
+export default async function PacketDetailManagerPage() {
+  const authUser = await requireAuthenticatedCareerUser();
+  const packet = (await listPersistentApplicationPackets(authUser.userId))[0];
 
   if (packet) {
     redirect(`/application-packets/${packet.id}`);

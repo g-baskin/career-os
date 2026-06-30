@@ -1,22 +1,24 @@
 import { createCommand } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../_lib/auth";
 import { executeCommandForReview } from "../_lib/command-runtime";
 import { commandResult, fail } from "../_lib/responses";
 import { resumeGenerateRequestSchema } from "./schema";
 
 export async function POST(request: Request) {
-  const parsed = resumeGenerateRequestSchema.safeParse(await request.json());
+  const authUser = await requireAuthenticatedCareerUser();
+  const parsed = resumeGenerateRequestSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) {
     return fail("Invalid resume generation request.", "INVALID_RESUME_REQUEST", 400);
   }
 
-  const body = parsed.data;
+  const { userId: _ignoredUserId, ...payload } = parsed.data;
   const command = createCommand({
     type: "resume.generate",
     requestedBy: "api",
-    userId: body.userId,
+    userId: authUser.userId,
     entityType: "application_packet",
-    entityId: body.applicationPacketId,
-    payload: body
+    entityId: payload.applicationPacketId,
+    payload
   });
 
   const { result } = await executeCommandForReview(request, command);

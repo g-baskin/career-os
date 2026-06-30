@@ -1,8 +1,10 @@
-import { localApprovalRequestService } from "@career-os/orchestration";
+import { prismaApprovalRequestService } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../_lib/auth";
 import { listApprovals } from "./_handlers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return listApprovals(localApprovalRequestService);
+  const authUser = await requireAuthenticatedCareerUser();
+  return listApprovals(prismaApprovalRequestService, authUser);
 }

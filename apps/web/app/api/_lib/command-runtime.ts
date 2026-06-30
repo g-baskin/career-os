@@ -4,8 +4,6 @@ import { snapshotStore } from "@career-os/snapshots";
 import type { CareerCommand, CommandResult } from "@career-os/shared";
 import { stateStore } from "@career-os/state";
 
-const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
-
 export interface CommandExecutionRuntime {
   result: CommandResult;
   runtime: "local-memory" | "prisma" | "local-memory-fallback";
@@ -15,20 +13,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isLocalRequest(request: Request) {
-  const hostname = new URL(request.url).hostname;
-  return localHosts.has(hostname);
+function shouldUseLocalMemory() {
+  return process.env.CAREER_OS_COMMAND_RUNTIME === "local-memory";
 }
 
-function shouldUseLocalMemory(request: Request) {
-  const configuredRuntime = process.env.CAREER_OS_COMMAND_RUNTIME;
-  if (configuredRuntime === "prisma") return false;
-  if (configuredRuntime === "local-memory") return true;
-  return isLocalRequest(request);
-}
-
-function shouldUseLocalFallback(request: Request) {
-  return process.env.CAREER_OS_COMMAND_RUNTIME !== "prisma" && isLocalRequest(request);
+function shouldUseLocalFallback() {
+  return false;
 }
 
 function isPrismaUnavailable(result: CommandResult) {
@@ -54,14 +44,14 @@ export function createLocalReviewCommandBus() {
   }));
 }
 
-export async function executeCommandForReview(request: Request, command: CareerCommand): Promise<CommandExecutionRuntime> {
-  if (shouldUseLocalMemory(request)) {
+export async function executeCommandForReview(_request: Request, command: CareerCommand): Promise<CommandExecutionRuntime> {
+  if (shouldUseLocalMemory()) {
     return { result: await createLocalReviewCommandBus().execute(command), runtime: "local-memory" };
   }
 
   const result = await createDefaultCommandBus().execute(command);
   if (!isPrismaUnavailable(result)) return { result, runtime: "prisma" };
-  if (!shouldUseLocalFallback(request)) return { result: sanitizedPrismaUnavailableResult(result), runtime: "prisma" };
+  if (!shouldUseLocalFallback()) return { result: sanitizedPrismaUnavailableResult(result), runtime: "prisma" };
 
   const fallbackCommand: CareerCommand = {
     ...command,

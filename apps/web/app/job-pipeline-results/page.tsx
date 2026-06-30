@@ -1,5 +1,5 @@
-import { listApplicationPackets } from "@career-os/domains";
-import { stateStore } from "@career-os/state";
+import { requireAuthenticatedCareerUser } from "../api/_lib/auth";
+import { listPersistentApplicationPackets, listPersistentJobDashboardProjections } from "../api/_lib/persistent-state";
 import ApplicationPacketAction from "./application-packet-action";
 
 export const dynamic = "force-dynamic";
@@ -27,8 +27,12 @@ function optionalText(value: unknown) {
 }
 
 export default async function JobPipelineResultsPage() {
-  const projections = await Promise.resolve(stateStore.listByProjectionType("job.dashboard_segment"));
-  const packetByJobId = new Map(listApplicationPackets().map((packet) => [packet.jobId, packet.id]));
+  const authUser = await requireAuthenticatedCareerUser();
+  const [projections, packets] = await Promise.all([
+    listPersistentJobDashboardProjections(authUser.userId),
+    listPersistentApplicationPackets(authUser.userId)
+  ]);
+  const packetByJobId = new Map(packets.map((packet) => [packet.jobId, packet.id]));
 
   return (
     <main className="main">

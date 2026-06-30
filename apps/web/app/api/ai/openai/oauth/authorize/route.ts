@@ -1,5 +1,6 @@
 import { buildOpenAiOAuthAuthorizationUrl, createOAuthState, createPkceChallenge, createPkceVerifier, openAiOAuthProvider } from "@career-os/ai";
 import { NextResponse } from "next/server";
+import { requireAuthenticatedCareerUser } from "../../../../_lib/auth";
 import { fail } from "../../../../_lib/responses";
 
 const verifierCookie = "career_os_openai_oauth_verifier";
@@ -7,6 +8,7 @@ const stateCookie = "career_os_openai_oauth_state";
 const cookieMaxAgeSeconds = 10 * 60;
 
 export async function GET(request: Request) {
+  await requireAuthenticatedCareerUser();
   const clientId = process.env.OPENAI_OAUTH_CLIENT_ID;
   if (!clientId) {
     return fail("OPENAI_OAUTH_CLIENT_ID is required before starting OpenAI OAuth.", "OPENAI_OAUTH_NOT_CONFIGURED", 500);

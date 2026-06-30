@@ -1,9 +1,11 @@
-import { getApplicationPacket } from "@career-os/domains";
+import { requireAuthenticatedCareerUser } from "../../api/_lib/auth";
+import { getPersistentApplicationPacket } from "../../api/_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
-export default function PacketDetailPage({ params }: { params: { id: string } }) {
-  const packet = getApplicationPacket(params.id);
+export default async function PacketDetailPage({ params }: { params: { id: string } }) {
+  const authUser = await requireAuthenticatedCareerUser();
+  const packet = await getPersistentApplicationPacket(authUser.userId, params.id);
 
   if (!packet) {
     return (

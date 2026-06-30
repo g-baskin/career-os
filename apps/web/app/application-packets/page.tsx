@@ -1,11 +1,13 @@
-import { listApplicationPackets } from "@career-os/domains";
+import { requireAuthenticatedCareerUser } from "../api/_lib/auth";
+import { listPersistentApplicationPackets } from "../api/_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
 const sections = ["ready_to_generate", "awaiting_review", "ready_to_apply", "followup_due", "closed"];
 
-export default function ApplicationPacketsPage() {
-  const packets = listApplicationPackets();
+export default async function ApplicationPacketsPage() {
+  const authUser = await requireAuthenticatedCareerUser();
+  const packets = await listPersistentApplicationPackets(authUser.userId);
 
   return (
     <main className="main">

@@ -1,11 +1,12 @@
 import { exchangeOpenAiOAuthCode, fetchOpenAiOAuthUserInfo, OpenAiOAuthError, type OpenAiOAuthTokenResponse, type OpenAiOAuthUserInfo } from "@career-os/ai";
 import { prisma } from "@career-os/db";
 import { NextResponse } from "next/server";
+import { requireAuthenticatedCareerUser } from "../../../../_lib/auth";
 import { fail } from "../../../../_lib/responses";
 
 const verifierCookie = "career_os_openai_oauth_verifier";
 const stateCookie = "career_os_openai_oauth_state";
-const openAiOAuthSettingKey = "ai.openai.oauth.connection";
+const openAiOAuthSettingKeyPrefix = "ai.openai.oauth.connection";
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 type PrismaSystemSettingClient = {
   systemSetting: {
@@ -14,6 +15,7 @@ type PrismaSystemSettingClient = {
 };
 
 export async function GET(request: Request) {
+  const authUser = await requireAuthenticatedCareerUser();
   const requestUrl = new URL(request.url);
   const error = requestUrl.searchParams.get("error");
   if (error) {
@@ -59,7 +61,7 @@ export async function GET(request: Request) {
 
   const userInfo = await fetchUserInfoSafely(token.access_token);
   try {
-    await persistOpenAiOAuthToken(token, userInfo);
+    await persistOpenAiOAuthToken(token, userInfo, authUser.userId);
   } catch {
     return fail("OpenAI OAuth token persistence failed.", "OPENAI_OAUTH_TOKEN_PERSISTENCE_FAILED", 503);
   }
@@ -79,7 +81,7 @@ export async function GET(request: Request) {
         hasIdToken: Boolean(token.id_token)
       },
       userInfo: redactUserInfo(userInfo),
-      tokenStorage: "prisma_system_setting"
+      tokenStorage: "prisma_system_setting_user_scoped"
     }
   });
   response.cookies.set(verifierCookie, "", { path: "/api/ai/openai/oauth", maxAge: 0 });
@@ -87,12 +89,13 @@ export async function GET(request: Request) {
   return response;
 }
 
-async function persistOpenAiOAuthToken(token: OpenAiOAuthTokenResponse, userInfo: OpenAiOAuthUserInfo | undefined) {
+async function persistOpenAiOAuthToken(token: OpenAiOAuthTokenResponse, userInfo: OpenAiOAuthUserInfo | undefined, userId: string) {
   const savedAt = new Date();
   const expiresAt = token.expires_in ? new Date(savedAt.getTime() + token.expires_in * 1000).toISOString() : undefined;
   const value = withoutUndefined({
     provider: "openai",
     connected: true,
+    userId,
     tokenType: token.token_type,
     scope: token.scope,
     accessToken: token.access_token,
@@ -104,9 +107,10 @@ async function persistOpenAiOAuthToken(token: OpenAiOAuthTokenResponse, userInfo
     updatedAt: savedAt.toISOString()
   });
 
+  const key = `${openAiOAuthSettingKeyPrefix}.${userId}`;
   await (prisma as unknown as PrismaSystemSettingClient).systemSetting.upsert({
-    where: { key: openAiOAuthSettingKey },
-    create: { key: openAiOAuthSettingKey, value },
+    where: { key },
+    create: { key, value },
     update: { value }
   });
 }

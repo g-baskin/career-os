@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "npm@10.8.0",
+  "engines": {
+    "node": ">=22.11.0",
+    "npm": ">=10.8.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,6 +17,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
     "lint": "eslint . --ext .ts,.tsx",
     "commit:guard": "npm run typecheck && npm test && npm run lint"
   },
@@ -20,7 +28,7 @@
     "@prisma/client": "^5.16.0",
     "bullmq": "^5.8.2",
     "ioredis": "^5.4.1",
-    "next": "^14.2.4",
+    "next": "^14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zod": "^3.23.8"

@@ -3,7 +3,15 @@ import { errorMessage, fail, ok } from "../../_lib/responses";
 
 export const dynamic = "force-dynamic";
 
+function disabledLocalDemoRouteResponse() {
+  if (process.env.CAREER_OS_ENABLE_LOCAL_DEMO_ROUTES === "true") return undefined;
+  return fail("Local demo routes are disabled in this runtime.", "LOCAL_DEMO_ROUTES_DISABLED", 404);
+}
+
 export async function GET() {
+  const disabled = disabledLocalDemoRouteResponse();
+  if (disabled) return disabled;
+
   try {
     return ok(await getLocalDataTouchpoints());
   } catch (error) {
@@ -12,6 +20,9 @@ export async function GET() {
 }
 
 export async function POST() {
+  const disabled = disabledLocalDemoRouteResponse();
+  if (disabled) return disabled;
+
   try {
     return ok(await seedLocalDataTouchpoints(), { status: 201 });
   } catch (error) {

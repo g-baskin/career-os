@@ -1,12 +1,13 @@
-import { localApprovalRequestService } from "@career-os/orchestration";
+import { prismaApprovalRequestService } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../api/_lib/auth";
 import ApprovalTestPanel from "./ApprovalTestPanel";
 import type { ApprovalView } from "./approval-test-panel-model";
 
 export const dynamic = "force-dynamic";
 
-async function getApprovals(): Promise<ApprovalView[]> {
+async function getApprovals(userId: string): Promise<ApprovalView[]> {
   try {
-    const approvals = await localApprovalRequestService.list();
+    const approvals = (await prismaApprovalRequestService.list()).filter((approval) => approval.userId === userId);
     return approvals.map((approval) => ({
       id: approval.id,
       userId: approval.userId,
@@ -33,13 +34,15 @@ async function getApprovals(): Promise<ApprovalView[]> {
 }
 
 export default async function ApprovalsPage() {
-  const approvals = await getApprovals();
+  const authUser = await requireAuthenticatedCareerUser();
+  const approvals = await getApprovals(authUser.userId);
+  const localDemoRoutesEnabled = process.env.CAREER_OS_ENABLE_LOCAL_DEMO_ROUTES === "true";
 
   return (
     <main className="main">
       <h1>Approval Requests</h1>
       <p className="muted">Sensitive commands wait here for human approval before execution.</p>
-      <ApprovalTestPanel initialApprovals={approvals} />
+      <ApprovalTestPanel initialApprovals={approvals} localDemoRoutesEnabled={localDemoRoutesEnabled} />
     </main>
   );
 }

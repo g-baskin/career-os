@@ -2,7 +2,12 @@ import { InMemoryEventStore } from "@career-os/events";
 import { localApprovalRequestService, PermissionPolicyService, createCommand, createCommandBus, createOrchestrator, type CommandBus } from "@career-os/orchestration";
 import { InMemorySnapshotStore } from "@career-os/snapshots";
 import { InMemoryStateStore } from "@career-os/state";
-import { commandResult } from "../../_lib/responses";
+import { commandResult, fail } from "../../_lib/responses";
+
+export function disabledLocalDemoRouteResponse() {
+  if (process.env.CAREER_OS_ENABLE_LOCAL_DEMO_ROUTES === "true") return undefined;
+  return fail("Local demo routes are disabled in this runtime.", "LOCAL_DEMO_ROUTES_DISABLED", 404);
+}
 
 export function createLocalApprovalDemoCommandBus() {
   const eventStore = new InMemoryEventStore();

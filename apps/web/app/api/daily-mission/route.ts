@@ -1,5 +1,5 @@
-import { listApplicationPackets } from "@career-os/domains";
-import { stateStore } from "@career-os/state";
+import { requireAuthenticatedCareerUser } from "../_lib/auth";
+import { listPersistentApplicationPackets, listPersistentJobDashboardProjections } from "../_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +18,9 @@ function bySegment(projections: Array<{ data: unknown }>, segment: string) {
 }
 
 export async function GET() {
-  const packets = listApplicationPackets();
-  const jobProjections = await Promise.resolve(stateStore.listByProjectionType("job.dashboard_segment"));
+  const authUser = await requireAuthenticatedCareerUser();
+  const packets = await listPersistentApplicationPackets(authUser.userId);
+  const jobProjections = await listPersistentJobDashboardProjections(authUser.userId);
 
   return Response.json({
     topRemoteCommercialJobs: bySegment(jobProjections, "Remote Commercial"),

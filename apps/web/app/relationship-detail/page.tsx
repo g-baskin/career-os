@@ -1,10 +1,12 @@
-import { listRelationshipPeople } from "@career-os/domains";
 import { redirect } from "next/navigation";
+import { requireAuthenticatedCareerUser } from "../api/_lib/auth";
+import { listPersistentRelationshipPeople } from "../api/_lib/persistent-state";
 
 export const dynamic = "force-dynamic";
 
-export default function RelationshipDetailManagerPage() {
-  const person = listRelationshipPeople()[0];
+export default async function RelationshipDetailManagerPage() {
+  const authUser = await requireAuthenticatedCareerUser();
+  const person = (await listPersistentRelationshipPeople(authUser.userId))[0];
 
   if (person) {
     redirect(`/relationships/${person.id}`);

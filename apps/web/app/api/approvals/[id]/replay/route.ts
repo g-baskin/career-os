@@ -1,20 +1,12 @@
-import { InMemoryEventStore } from "@career-os/events";
-import { createApprovedReplayCommandBus, createOrchestrator, localApprovalRequestService, PermissionPolicyService } from "@career-os/orchestration";
-import { InMemorySnapshotStore } from "@career-os/snapshots";
-import { InMemoryStateStore } from "@career-os/state";
+import { createApprovedReplayCommandBus, createDefaultOrchestrator, prismaApprovalRequestService } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../../../_lib/auth";
 import { replayApproval } from "../../_handlers";
 
-function createLocalReplayCommandBus() {
-  const orchestrator = createOrchestrator({
-    eventStore: new InMemoryEventStore(),
-    stateStore: new InMemoryStateStore(),
-    snapshotStore: new InMemorySnapshotStore(),
-    permissions: new PermissionPolicyService(),
-    approvals: localApprovalRequestService
-  });
-  return createApprovedReplayCommandBus(orchestrator);
+function createPrismaReplayCommandBus() {
+  return createApprovedReplayCommandBus(createDefaultOrchestrator());
 }
 
 export async function POST(_request: Request, { params }: { params: { id: string } }) {
-  return replayApproval(localApprovalRequestService, createLocalReplayCommandBus(), params.id);
+  const authUser = await requireAuthenticatedCareerUser();
+  return replayApproval(prismaApprovalRequestService, createPrismaReplayCommandBus(), params.id, authUser);
 }

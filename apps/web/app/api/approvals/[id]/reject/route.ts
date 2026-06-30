@@ -1,6 +1,8 @@
-import { localApprovalRequestService } from "@career-os/orchestration";
+import { prismaApprovalRequestService } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../../../_lib/auth";
 import { rejectApproval } from "../../_handlers";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  return rejectApproval(localApprovalRequestService, params.id, request);
+  const authUser = await requireAuthenticatedCareerUser();
+  return rejectApproval(prismaApprovalRequestService, params.id, request, authUser);
 }

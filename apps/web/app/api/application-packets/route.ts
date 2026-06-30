@@ -1,21 +1,26 @@
-import { listApplicationPackets } from "@career-os/domains";
 import { createCommand } from "@career-os/orchestration";
+import { requireAuthenticatedCareerUser } from "../_lib/auth";
 import { executeCommandForReview } from "../_lib/command-runtime";
+import { listPersistentApplicationPackets } from "../_lib/persistent-state";
 import { commandResult } from "../_lib/responses";
 
 export async function GET() {
-  return Response.json({ ok: true, data: { applicationPackets: listApplicationPackets() } });
+  const authUser = await requireAuthenticatedCareerUser();
+  const applicationPackets = await listPersistentApplicationPackets(authUser.userId);
+  return Response.json({ ok: true, data: { applicationPackets } });
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  const authUser = await requireAuthenticatedCareerUser();
+  const body = await request.json().catch(() => ({}));
+  const { userId: _ignoredUserId, ...payload } = body;
   const command = createCommand({
     type: "application_packets.create",
     requestedBy: "api",
-    userId: body.userId,
+    userId: authUser.userId,
     entityType: "job",
-    entityId: body.jobId,
-    payload: body
+    entityId: payload.jobId,
+    payload
   });
   const { result } = await executeCommandForReview(request, command);
   return commandResult(result, 201, 400);

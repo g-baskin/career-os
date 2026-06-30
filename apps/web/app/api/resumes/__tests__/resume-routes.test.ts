@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { POST } from "../route";
 import { resumeGenerateRequestSchema } from "../schema";
 
+process.env.CAREER_OS_AUTH_DISABLED = "true";
+process.env.CAREER_OS_AUTH_DISABLED_USER_ID = "user-1";
+process.env.CAREER_OS_COMMAND_RUNTIME = "local-memory";
+
 describe("resume route schema", () => {
   it("accepts safe resume generation requests", () => {
     const parsed = resumeGenerateRequestSchema.safeParse({
